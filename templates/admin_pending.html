@@ -1,0 +1,387 @@
+{% extends "base.html" %}
+{% block title %}الرحلات الجديدة - نظام حركة سيارات قمح{% endblock %}
+
+{% block content %}
+
+<style>
+    .pending-header {
+        background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+        color: white;
+        padding: 25px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 15px rgba(229, 62, 62, 0.3);
+    }
+    .pending-header h2 {
+        color: white !important;
+        border: none !important;
+        margin: 0 0 10px 0 !important;
+        padding: 0 !important;
+        font-size: 22px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .pending-count-badge {
+        background: white;
+        color: #c53030;
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 16px;
+        font-weight: 700;
+    }
+    .pending-header p {
+        margin: 0;
+        opacity: 0.95;
+        font-size: 14px;
+    }
+    .trip-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        border-right: 4px solid #e53e3e;
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 20px;
+        align-items: center;
+        transition: all 0.2s;
+    }
+    .trip-card:hover {
+        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    @media (max-width: 900px) {
+        .trip-card { grid-template-columns: 1fr; }
+    }
+    .trip-thumbnails {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    .trip-thumb {
+        width: 100px;
+        height: 100px;
+        border-radius: 10px;
+        object-fit: cover;
+        cursor: pointer;
+        border: 2px solid #e2e8f0;
+        transition: all 0.2s;
+        background: #f7fafc;
+    }
+    .trip-thumb:hover {
+        transform: scale(1.05);
+        border-color: #1e3a5f;
+    }
+    .trip-thumb-placeholder {
+        width: 100px;
+        height: 100px;
+        border-radius: 10px;
+        background: #edf2f7;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+        color: #cbd5e0;
+    }
+    .trip-info {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+    }
+    .info-item {
+        font-size: 13px;
+    }
+    .info-item .label {
+        color: #718096;
+        font-size: 11px;
+        text-transform: uppercase;
+        font-weight: 600;
+        margin-bottom: 3px;
+        display: block;
+    }
+    .info-item .value {
+        color: #1e3a5f;
+        font-weight: 700;
+        font-size: 15px;
+    }
+    .trip-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .btn-dismiss {
+        background: #38a169;
+        color: white;
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+        font-family: inherit;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .btn-dismiss:hover {
+        background: #2f855a;
+    }
+    .btn-view {
+        background: #1e3a5f;
+        color: white;
+        padding: 10px 16px;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 13px;
+        font-family: inherit;
+        text-decoration: none;
+        text-align: center;
+        transition: all 0.2s;
+        white-space: nowrap;
+    }
+    .btn-view:hover {
+        background: #2c5282;
+    }
+    .mark-all-bar {
+        text-align: center;
+        margin-bottom: 20px;
+    }
+    .btn-mark-all {
+        background: #38a169;
+        color: white;
+        padding: 12px 30px;
+        border-radius: 10px;
+        border: none;
+        cursor: pointer;
+        font-weight: 700;
+        font-size: 15px;
+        font-family: inherit;
+        transition: all 0.2s;
+        box-shadow: 0 2px 10px rgba(56, 161, 105, 0.3);
+    }
+    .btn-mark-all:hover {
+        background: #2f855a;
+        transform: translateY(-1px);
+    }
+    .no-pending {
+        text-align: center;
+        padding: 60px 20px;
+        color: #718096;
+    }
+    .no-pending .icon {
+        font-size: 60px;
+        margin-bottom: 15px;
+        display: block;
+    }
+    .no-pending .title {
+        font-size: 20px;
+        font-weight: 700;
+        color: #1e3a5f;
+        margin-bottom: 8px;
+    }
+    .modal-image-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.9);
+        z-index: 3000;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        cursor: zoom-out;
+    }
+    .modal-image-overlay.show { display: flex; }
+    .modal-image-overlay img {
+        max-width: 95%;
+        max-height: 95vh;
+        border-radius: 8px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+    }
+    .time-ago {
+        display: inline-block;
+        background: #fed7d7;
+        color: #c53030;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 700;
+        margin-right: 5px;
+    }
+</style>
+
+<div class="pending-header">
+    <h2>
+        <span>🔔 الرحلات الجديدة من تطبيق السائق</span>
+        {% if pending_trips %}
+        <span class="pending-count-badge">{{ pending_trips|length }} رحلة جديدة</span>
+        {% endif %}
+    </h2>
+    <p>هذه هي الرحلات التي سجّلها السائقون من الجوال ولم يتم الاطلاع عليها بعد</p>
+</div>
+
+{% if pending_trips %}
+<div class="mark-all-bar">
+    <button onclick="markAllSeen()" class="btn-mark-all">✓ تعليم الكل كمقروء</button>
+</div>
+
+{% for trip in pending_trips %}
+<div class="trip-card" id="trip-card-{{ trip['id'] }}">
+    <div class="trip-thumbnails">
+        {% if trip['start_image'] %}
+        <img src="/uploads/{{ trip['start_image'] }}" class="trip-thumb" alt="عداد البداية" onclick="viewImage(this.src)">
+        {% else %}
+        <div class="trip-thumb-placeholder">📷</div>
+        {% endif %}
+        
+        {% if trip['end_image'] %}
+        <img src="/uploads/{{ trip['end_image'] }}" class="trip-thumb" alt="عداد النهاية" onclick="viewImage(this.src)">
+        {% else %}
+        <div class="trip-thumb-placeholder">⏳</div>
+        {% endif %}
+    </div>
+    
+    <div class="trip-info">
+        <div class="info-item">
+            <span class="label">السائق</span>
+            <span class="value">👤 {{ trip['driver_name'] }}</span>
+        </div>
+        <div class="info-item">
+            <span class="label">السيارة</span>
+            <span class="value">🚗 {{ trip['car_name'] }}</span>
+        </div>
+        <div class="info-item">
+            <span class="label">الوجهة</span>
+            <span class="value">📍 {{ trip['destination'] or '—' }}</span>
+        </div>
+        <div class="info-item">
+            <span class="label">التاريخ</span>
+            <span class="value">
+                <span class="time-ago">جديد</span>
+                {{ trip['trip_date'] }}
+            </span>
+        </div>
+        <div class="info-item">
+            <span class="label">وقت البدء</span>
+            <span class="value">⏰ {{ trip['start_time'] or '—' }}</span>
+        </div>
+        <div class="info-item">
+            <span class="label">عداد البداية</span>
+            <span class="value">{{ trip['start_km'] or '—' }} كم</span>
+        </div>
+        {% if trip['end_km'] %}
+        <div class="info-item">
+            <span class="label">عداد النهاية</span>
+            <span class="value">{{ trip['end_km'] }} كم</span>
+        </div>
+        <div class="info-item">
+            <span class="label">المسافة</span>
+            <span class="value" style="color:#38a169;">{{ trip['distance'] or 0 }} كم</span>
+        </div>
+        <div class="info-item">
+            <span class="label">وقت الإنهاء</span>
+            <span class="value">⏰ {{ trip['end_time'] or '—' }}</span>
+        </div>
+        {% else %}
+        <div class="info-item" style="grid-column: 1 / -1;">
+            <span class="label">الحالة</span>
+            <span class="value" style="color:#d69e2e;">🟡 الرحلة لا تزال نشطة (لم تنته بعد)</span>
+        </div>
+        {% endif %}
+    </div>
+    
+    <div class="trip-actions">
+        <a href="/trips/edit/{{ trip['id'] }}" class="btn-view">👁️ عرض / تعديل</a>
+        <button onclick="markSeen({{ trip['id'] }})" class="btn-dismiss">✓ تم الاطلاع</button>
+    </div>
+</div>
+{% endfor %}
+
+{% else %}
+<div class="card">
+    <div class="no-pending">
+        <span class="icon">✅</span>
+        <div class="title">ما في رحلات جديدة</div>
+        <div>كل الرحلات القادمة من تطبيق السائق تم الاطلاع عليها</div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Modal عرض الصورة -->
+<div class="modal-image-overlay" id="imageModal" onclick="closeImage()">
+    <img id="modalImage" src="" alt="صورة العداد">
+</div>
+
+<script>
+function markSeen(tripId) {
+    if (!confirm('هل تريد تعليم هذه الرحلة كمقروءة؟')) return;
+    
+    fetch('/admin/pending/mark_seen/' + tripId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const card = document.getElementById('trip-card-' + tripId);
+            card.style.transition = 'all 0.3s';
+            card.style.opacity = '0';
+            card.style.transform = 'translateX(100px)';
+            setTimeout(() => {
+                card.remove();
+                checkEmpty();
+            }, 300);
+        } else {
+            alert('خطأ: ' + data.error);
+        }
+    })
+    .catch(err => alert('فشل الاتصال: ' + err.message));
+}
+
+function markAllSeen() {
+    if (!confirm('هل تريد تعليم كل الرحلات كمقروءة؟')) return;
+    
+    fetch('/admin/pending/mark_all_seen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('خطأ: ' + data.error);
+        }
+    })
+    .catch(err => alert('فشل الاتصال: ' + err.message));
+}
+
+function checkEmpty() {
+    const cards = document.querySelectorAll('.trip-card');
+    if (cards.length === 0) {
+        location.reload();
+    }
+}
+
+function viewImage(src) {
+    document.getElementById('modalImage').src = src;
+    document.getElementById('imageModal').classList.add('show');
+}
+
+function closeImage() {
+    document.getElementById('imageModal').classList.remove('show');
+}
+
+// إغلاق الصورة بزر Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeImage();
+    }
+});
+</script>
+
+{% endblock %}

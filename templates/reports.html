@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+
+{% block title %}التقارير - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>📊 التقارير الشهرية</h2>
+    
+    <form method="GET" action="/reports" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <div class="form-row">
+            <div class="form-group">
+                <label>الشهر</label>
+                <select name="month">
+                    {% for m in range(1, 13) %}
+                    <option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>السنة</label>
+                <select name="year">
+                    {% for y in years %}
+                    <option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>السيارة</label>
+                <select name="car_id">
+                    <option value="">-- كل السيارات --</option>
+                    {% for car in cars %}
+                    <option value="{{ car.id }}" {% if car.id == selected_car %}selected{% endif %}>{{ car.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>السائق</label>
+                <select name="driver_id">
+                    <option value="">-- كل السائقين --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}" {% if driver.id == selected_driver %}selected{% endif %}>{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>💳 حالة الدفع / المصدر</label>
+                <select name="payment_filter">
+                    <option value="">-- الكل --</option>
+                    <option value="خزان الشركة" {% if payment_filter == 'خزان الشركة' %}selected{% endif %}>🏢 خزان الشركة</option>
+                    <option value="كازية" {% if payment_filter == 'كازية' %}selected{% endif %}>🏪 كازية (الكل)</option>
+                    <option value="مدفوعة من قسم الحركة" {% if payment_filter == 'مدفوعة من قسم الحركة' %}selected{% endif %}>💰 مدفوعة من قسم الحركة</option>
+                    <option value="مدفوعة من إدارة المشروع" {% if payment_filter == 'مدفوعة من إدارة المشروع' %}selected{% endif %}>📋 مدفوعة من إدارة المشروع</option>
+                    <option value="مدفوعة من جهة أخرى" {% if payment_filter == 'مدفوعة من جهة أخرى' %}selected{% endif %}>📦 مدفوعة من جهة أخرى</option>
+                    <option value="اشتراك شركة البوابة الذهبية" {% if payment_filter == 'اشتراك شركة البوابة الذهبية' %}selected{% endif %}>🏆 اشتراك شركة البوابة الذهبية</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>📋 نوع التقرير</label>
+            <select name="report_type">
+                <option value="all" {% if report_type == 'all' %}selected{% endif %}>📊 التقرير الكامل (رحلات + وقود + صيانة + سائقين)</option>
+                <option value="trips" {% if report_type == 'trips' %}selected{% endif %}>📅 الرحلات فقط</option>
+                <option value="fuel" {% if report_type == 'fuel' %}selected{% endif %}>⛽ الوقود فقط</option>
+                <option value="maintenance" {% if report_type == 'maintenance' %}selected{% endif %}>🔧 الصيانة فقط</option>
+                <option value="drivers" {% if report_type == 'drivers' %}selected{% endif %}>👤 السائقين فقط (مهمات + إضافي)</option>
+            </select>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">🔍 عرض التقرير</button>
+        <a href="/reports/export?month={{ selected_month }}&year={{ selected_year }}&car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&report_type={{ report_type or 'all' }}&payment_filter={{ payment_filter or '' }}" class="btn btn-success">📥 تصدير Excel</a>
+    </form>
+</div>
+
+{% if report_data %}
+{% if report_type == 'all' or report_type == 'trips' %}
+<div class="stats-grid">
+    <div class="stat-box">
+        <div class="number">{{ report_data.summary.total_trips }}</div>
+        <div class="label">📅 عدد الرحلات</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ "%.1f"|format(report_data.summary.total_km or 0) }}</div>
+        <div class="label">🛣️ إجمالي الكيلومترات</div>
+    </div>
+</div>
+{% endif %}
+
+{% if report_type == 'all' or report_type == 'fuel' %}
+<div class="stats-grid">
+    <div class="stat-box">
+        <div class="number">{{ "%.1f"|format(report_data.summary.total_liters or 0) }}</div>
+        <div class="label">⛽ إجمالي اللترات</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #d69e2e;">
+        <div class="number">{{ "%.1f"|format(report_data.summary.gasoline_liters or 0) }}</div>
+        <div class="label">⛽ بنزين (لتر)</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #4a5568;">
+        <div class="number">{{ "%.1f"|format(report_data.summary.diesel_liters or 0) }}</div>
+        <div class="label">🛢️ ديزل (لتر)</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #38a169;">
+        <div class="number">{{ "%.1f"|format(report_data.summary.tank_liters or 0) }}</div>
+        <div class="label">🏢 خزان الشركة (لتر)</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #3182ce;">
+        <div class="number">{{ "%.1f"|format(report_data.summary.station_liters or 0) }}</div>
+        <div class="label">🏪 كازية (لتر)</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #d69e2e;">
+        <div class="number">{{ "%.1f"|format(report_data.summary.gateway_liters or 0) }}</div>
+        <div class="label">🏆 البوابة الذهبية (لتر)</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ "%.0f"|format(report_data.summary.total_fuel_cost or 0) }}</div>
+        <div class="label">💰 تكلفة الوقود (قسم الحركة)</div>
+    </div>
+</div>
+{% endif %}
+
+{% if report_type == 'all' or report_type == 'maintenance' %}
+<div class="stats-grid">
+    <div class="stat-box" style="border-right-color: #d69e2e;">
+        <div class="number">{{ "%.0f"|format(report_data.summary.total_maint_cost or 0) }}</div>
+        <div class="label">🔧 تكلفة الصيانة</div>
+    </div>
+</div>
+{% endif %}
+
+{% if report_data.cars and (report_type == 'all' or report_type == 'trips' or report_type == 'fuel' or report_type == 'maintenance') %}
+<div class="card">
+    <h2>🚗 تفاصيل كل سيارة</h2>
+    {% for car_report in report_data.cars %}
+    <div style="margin-bottom: 30px; padding: 20px; background: #f7fafc; border-radius: 8px; border-right: 4px solid #1e3a5f;">
+        <h3 style="color: #1e3a5f; margin-bottom: 15px;">🚗 {{ car_report.car_name }}</h3>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 15px;">
+            {% if report_type == 'all' or report_type == 'trips' %}
+            <div><strong>الرحلات:</strong> {{ car_report.trips|length }}</div>
+            <div><strong>المسافة:</strong> {{ "%.1f"|format(car_report.total_km or 0) }} كم</div>
+            {% endif %}
+            {% if report_type == 'all' or report_type == 'fuel' %}
+            <div><strong>إجمالي اللترات:</strong> {{ "%.1f"|format(car_report.total_liters or 0) }}</div>
+            <div><strong>💰 تكلفة الوقود:</strong> {{ "%.0f"|format(car_report.total_fuel_cost or 0) }}</div>
+            <div style="background:#e9d8fd; padding:8px; border-radius:6px;"><strong>💰 تكلفة 1 كم:</strong> <span style="color:#553c9a; font-weight:700;">
+                {% if car_report.cost_per_km %}
+                {{ "%.0f"|format(car_report.cost_per_km) }} ل.س
+                {% else %}(بحاجة تعبئتين){% endif %}
+            </span></div>
+            <div style="background:#e9d8fd; padding:8px; border-radius:6px;"><strong>⛽ استهلاك 100 كم:</strong> <span style="color:#553c9a; font-weight:700;">
+                {% if car_report.liters_per_100 %}
+                {{ "%.2f"|format(car_report.liters_per_100) }} لتر
+                {% else %}-{% endif %}
+            </span></div>
+            {% endif %}
+            {% if report_type == 'all' or report_type == 'maintenance' %}
+            <div><strong>🔧 تكلفة الصيانة:</strong> {{ "%.0f"|format(car_report.total_maint_cost or 0) }}</div>
+            {% endif %}
+        </div>
+        
+        {% if (report_type == 'all' or report_type == 'trips') and car_report.trips %}
+        <h4 style="margin-top: 15px; color: #1e3a5f;">📅 الرحلات:</h4>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>السائق</th>
+                        <th>الوجهة</th>
+                        <th>نوع الرحلة</th>
+                        <th>الخروج</th>
+                        <th>العودة</th>
+                        <th>عداد البداية</th>
+                        <th>عداد النهاية</th>
+                        <th>المسافة</th>
+                        <th style="background:#e9d8fd;color:#553c9a;">كلفة الرحلة (تقديري)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trip in car_report.trips %}
+                    <tr>
+                        <td>{{ trip.trip_date }}</td>
+                        <td>{{ trip.driver_name }}</td>
+                        <td>{{ trip.destination or '-' }}</td>
+                        <td>{{ trip.trip_type or '-' }}</td>
+                        <td>{{ trip.exit_time or '-' }}</td>
+                        <td>{{ trip.return_time or '-' }}</td>
+                        <td>{{ trip.start_km or '-' }}</td>
+                        <td>{{ trip.end_km or '-' }}</td>
+                        <td>{{ trip.distance or '-' }}</td>
+                        <td style="font-weight: 700; color: #553c9a;">
+                            {% if trip.trip_cost %}{{ "%.0f"|format(trip.trip_cost) }} *{% else %}-{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        {% if (report_type == 'all' or report_type == 'fuel') and car_report.fuel %}
+        <h4 style="margin-top: 15px; color: #1e3a5f;">⛽ تعبئات الوقود:</h4>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>نوع الوقود</th>
+                        <th>المصدر</th>
+                        <th>اللترات</th>
+                        <th>الكلفة النهائية</th>
+                        <th>العداد</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in car_report.fuel %}
+                    <tr>
+                        <td>{{ f.fuel_date }}</td>
+                        <td>{{ f.fuel_type or '-' }}</td>
+                        <td>{{ f.source or '-' }}</td>
+                        <td>{{ f.liters or '-' }}</td>
+                        <td>
+                            {% if f.payment_status == 'مدفوعة من قسم الحركة' %}
+                                {% if f.final_cost %}<span style="color: #1e3a5f; font-weight:600;">{{ "%.0f"|format(f.final_cost) }}</span>
+                                {% elif f.total_cost %}<span style="color: #1e3a5f; font-weight:600;">{{ "%.0f"|format(f.total_cost) }}</span>
+                                {% else %}-{% endif %}
+                            {% elif f.final_cost %}<span style="color: #718096;">{{ "%.0f"|format(f.final_cost) }} *</span>
+                            {% elif f.total_cost %}<span style="color: #718096;">{{ "%.0f"|format(f.total_cost) }} *</span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>{{ f.km_at_fill or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        {% if (report_type == 'all' or report_type == 'maintenance') and car_report.maintenance %}
+        <h4 style="margin-top: 15px; color: #d69e2e;">🔧 الصيانات:</h4>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>النوع</th>
+                        <th>العداد</th>
+                        <th>التكلفة</th>
+                        <th>رقم الفاتورة</th>
+                        <th>الورشة</th>
+                        <th>الصيانة القادمة</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in car_report.maintenance %}
+                    <tr>
+                        <td>{{ m.date }}</td>
+                        <td>{{ m.type }}</td>
+                        <td>{{ m.km_at_service or '-' }}</td>
+                        <td>{{ m.cost or '-' }}</td>
+                        <td>{{ m.invoice_number or '-' }}</td>
+                        <td>{{ m.workshop or '-' }}</td>
+                        <td>{{ m.next_service_km or '-' }} كم</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if report_data.drivers and (report_type == 'all' or report_type == 'drivers') %}
+<div class="card">
+    <h2>👤 تفاصيل السائقين (مهمات السفر + الإضافي)</h2>
+    {% for driver_report in report_data.drivers %}
+    <div style="margin-bottom: 30px; padding: 20px; background: #f7fafc; border-radius: 8px; border-right: 4px solid #3182ce;">
+        <h3 style="color: #1e3a5f; margin-bottom: 15px;">👤 {{ driver_report.driver_name }}</h3>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 15px;">
+            <div style="background:#e6fffa; padding:8px; border-radius:6px;">
+                <strong>✈️ مهمات السفر:</strong> {{ driver_report.travel_count }}
+            </div>
+            <div style="background:#e6fffa; padding:8px; border-radius:6px;">
+                <strong>🛣️ مجموع الكم:</strong> {{ "%.1f"|format(driver_report.travel_km or 0) }} كم
+            </div>
+            <div style="background:#fffaf0; padding:8px; border-radius:6px;">
+                <strong>🌅 صباحية:</strong> {{ "%.1f"|format(driver_report.morning_hours or 0) }} ساعة
+            </div>
+            <div style="background:#fffaf0; padding:8px; border-radius:6px;">
+                <strong>🌙 مسائية:</strong> {{ "%.1f"|format(driver_report.evening_hours or 0) }} ساعة
+            </div>
+            <div style="background:#fefcbf; padding:8px; border-radius:6px;">
+                <strong>⏰ إجمالي الإضافي:</strong> {{ "%.1f"|format(driver_report.total_overtime or 0) }} ساعة
+            </div>
+        </div>
+        
+        {% if driver_report.travel_missions %}
+        <h4 style="margin-top: 15px; color: #1e3a5f;">✈️ مهمات السفر:</h4>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>الوصف</th>
+                        <th>المسافة (كم)</th>
+                        <th>مهمة سفر؟</th>
+                        <th>الذهاب</th>
+                        <th>العودة</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tm in driver_report.travel_missions %}
+                    <tr>
+                        <td>{{ tm.date }}</td>
+                        <td>{{ tm.description or '-' }}</td>
+                        <td>{{ tm.distance_km or 0 }}</td>
+                        <td>
+                            {% if tm.is_travel == 1 %}
+                            <span class="badge" style="background:#c6f6d5;color:#22543d;">✅ نعم</span>
+                            {% else %}
+                            <span class="badge" style="background:#fed7d7;color:#742a2a;">❌ لا</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ tm.departure_time or '-' }}</td>
+                        <td>{{ tm.return_time or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        {% if driver_report.overtimes %}
+        <h4 style="margin-top: 15px; color: #d69e2e;">⏰ الإضافي:</h4>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>🌅 صباحية</th>
+                        <th>🌙 مسائية</th>
+                        <th>الإجمالي</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for o in driver_report.overtimes %}
+                    <tr>
+                        <td>{{ o.date }}</td>
+                        <td>{{ "%.1f"|format(o.morning_hours or 0) }}</td>
+                        <td>{{ "%.1f"|format(o.evening_hours or 0) }}</td>
+                        <td style="font-weight:600; color:#d69e2e;">{{ "%.1f"|format((o.morning_hours or 0) + (o.evening_hours or 0)) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% elif request.args.get('month') %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد بيانات لهذا الشهر.</p>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1e3a5f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="قمح - السائق">
+    <title>قمح - تطبيق السائق</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+            padding-bottom: 80px;
+            min-height: 100vh;
+            font-size: 16px;
+        }
+        .header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        .header h1 { font-size: 20px; margin-bottom: 5px; }
+        .header .subtitle { font-size: 13px; opacity: 0.85; }
+        .container { padding: 15px; max-width: 600px; margin: 0 auto; }
+
+        .status-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-top: 8px;
+        }
+        .status-online { background: #38a169; color: white; }
+        .status-offline { background: #e53e3e; color: white; }
+
+        .card {
+            background: white;
+            border-radius: 14px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+            margin-bottom: 15px;
+        }
+        .card h2 {
+            color: #1e3a5f;
+            font-size: 17px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .form-group { margin-bottom: 15px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 14px;
+        }
+        .form-group label .required-star {
+            color: #e53e3e;
+            margin-right: 3px;
+        }
+        .form-group select,
+        .form-group input {
+            width: 100%;
+            padding: 14px;
+            border: 2px solid #cbd5e0;
+            border-radius: 10px;
+            font-family: inherit;
+            font-size: 16px;
+            background: white;
+            transition: border 0.2s;
+        }
+        .form-group select:focus,
+        .form-group input:focus {
+            outline: none;
+            border-color: #1e3a5f;
+            box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.1);
+        }
+        .form-group input.error,
+        .form-group select.error {
+            border-color: #e53e3e;
+            background: #fff5f5;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s;
+            text-align: center;
+            font-family: inherit;
+        }
+        .btn-primary { background: #1e3a5f; color: white; }
+        .btn-primary:active { background: #2c5282; transform: scale(0.98); }
+        .btn-success { background: #38a169; color: white; }
+        .btn-success:active { background: #2f855a; transform: scale(0.98); }
+        .btn-danger { background: #e53e3e; color: white; }
+        .btn-danger:active { background: #c53030; transform: scale(0.98); }
+        .btn-warning { background: #d69e2e; color: white; }
+        .btn-secondary { background: #718096; color: white; }
+        .btn:disabled { background: #cbd5e0; color: #a0aec0; cursor: not-allowed; }
+
+        .image-upload {
+            border: 3px dashed #cbd5e0;
+            border-radius: 12px;
+            padding: 25px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f7fafc;
+            position: relative;
+            overflow: hidden;
+        }
+        .image-upload:active { background: #edf2f7; border-color: #1e3a5f; }
+        .image-upload.has-image { border-style: solid; border-color: #38a169; padding: 10px; }
+        .image-upload.error { border-color: #e53e3e; background: #fff5f5; }
+        .image-upload .icon { font-size: 42px; margin-bottom: 10px; }
+        .image-upload .text { color: #718096; font-size: 14px; font-weight: 600; }
+        .image-upload input[type="file"] { display: none; }
+        .image-upload img {
+            max-width: 100%;
+            max-height: 250px;
+            border-radius: 8px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .alert {
+            padding: 14px 18px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .alert-success { background: #c6f6d5; color: #22543d; border-right: 4px solid #38a169; }
+        .alert-error { background: #fed7d7; color: #742a2a; border-right: 4px solid #e53e3e; }
+        .alert-info { background: #bee3f8; color: #2a4365; border-right: 4px solid #3182ce; }
+        .alert-warning { background: #fefcbf; color: #744210; border-right: 4px solid #d69e2e; }
+
+        .active-trip-info {
+            background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 14px;
+            margin-bottom: 15px;
+            box-shadow: 0 4px 15px rgba(56, 161, 105, 0.3);
+        }
+        .active-trip-info h3 { font-size: 18px; margin-bottom: 10px; }
+        .active-trip-info .info-line {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            font-size: 14px;
+        }
+        .active-trip-info .info-line:last-child { border-bottom: none; }
+        .active-trip-info .label { opacity: 0.85; }
+        .active-trip-info .value { font-weight: 700; }
+
+        .hidden { display: none !important; }
+
+        .recent-trips { margin-top: 10px; }
+        .recent-trip-item {
+            background: #f7fafc;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 8px;
+            font-size: 13px;
+            border-right: 3px solid #1e3a5f;
+        }
+        .recent-trip-item .trip-header {
+            display: flex;
+            justify-content: space-between;
+            font-weight: 700;
+            color: #1e3a5f;
+            margin-bottom: 4px;
+        }
+        .recent-trip-item .trip-details {
+            color: #718096;
+            font-size: 12px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.08);
+            padding: 10px;
+            display: flex;
+            justify-content: space-around;
+            z-index: 99;
+        }
+        .bottom-nav button {
+            background: none;
+            border: none;
+            color: #718096;
+            font-size: 12px;
+            cursor: pointer;
+            padding: 6px 12px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .bottom-nav button.active { color: #1e3a5f; background: #ebf4ff; font-weight: 700; }
+        .bottom-nav button .icon { display: block; font-size: 20px; margin-bottom: 2px; }
+
+        .range-warning {
+            background: #fefcbf;
+            color: #744210;
+            padding: 12px 15px;
+            border-radius: 10px;
+            margin-top: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            border-right: 4px solid #d69e2e;
+            display: none;
+        }
+        .range-warning.show { display: block; }
+        .range-warning .hint { font-size: 12px; color: #975a16; margin-top: 4px; font-weight: 400; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🚗 تطبيق السائق</h1>
+    <div class="subtitle">مجموعة قمح القابضة</div>
+    <div id="statusBadge" class="status-badge status-online">● متصل</div>
+</div>
+
+<div class="container">
+
+    <div id="alertBox"></div>
+
+    <!-- شاشة تسجيل الدخول الأول -->
+    <div id="loginScreen" class="hidden">
+        <div class="card">
+            <h2>👤 من أنت؟</h2>
+            <div class="form-group">
+                <label>اختر اسمك <span class="required-star">*</span></label>
+                <select id="driverSelect">
+                    <option value="">-- اختر السائق --</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>اختر السيارة <span class="required-star">*</span></label>
+                <select id="carSelect">
+                    <option value="">-- اختر السيارة --</option>
+                </select>
+            </div>
+            <button class="btn btn-primary" onclick="saveIdentity()">حفظ ومتابعة</button>
+        </div>
+    </div>
+
+    <!-- شاشة الرحلة النشطة -->
+    <div id="activeTripScreen" class="hidden">
+        <div class="active-trip-info">
+            <h3>🟢 رحلة نشطة</h3>
+            <div class="info-line">
+                <span class="label">السائق:</span>
+                <span class="value" id="activeDriverName">-</span>
+            </div>
+            <div class="info-line">
+                <span class="label">السيارة:</span>
+                <span class="value" id="activeCarName">-</span>
+            </div>
+            <div class="info-line">
+                <span class="label">الوجهة:</span>
+                <span class="value" id="activeDestination">-</span>
+            </div>
+            <div class="info-line">
+                <span class="label">عداد البداية:</span>
+                <span class="value" id="activeStartKm">-</span>
+            </div>
+            <div class="info-line">
+                <span class="label">وقت البدء:</span>
+                <span class="value" id="activeStartTime">-</span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🏁 إنهاء الرحلة</h2>
+            <div class="form-group">
+                <label>صورة العداد (النهاية) <span class="required-star">*</span></label>
+                <div class="image-upload" id="endImageUpload" onclick="document.getElementById('endImageInput').click()">
+                    <div class="icon">📷</div>
+                    <div class="text">اضغط لتصوير العداد</div>
+                    <input type="file" id="endImageInput" accept="image/*" capture="environment">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>قراءة العداد النهائية (كم) <span class="required-star">*</span></label>
+                <input type="number" id="endKm" step="0.1" placeholder="أدخل قراءة العداد" inputmode="decimal" oninput="checkEndKm()">
+                <div class="range-warning" id="rangeWarning">
+                    ⚠️ <span id="rangeWarningText">قراءة العداد يجب أن تكون أكبر من قراءة البداية</span>
+                    <div class="hint">قراءة البداية: <span id="startKmHint">-</span> كم</div>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>ملاحظات (اختياري)</label>
+                <input type="text" id="endNotes" placeholder="أي ملاحظة عن الرحلة">
+            </div>
+            <button class="btn btn-danger" id="endTripBtn" onclick="endTrip()">🏁 إنهاء الرحلة</button>
+        </div>
+    </div>
+
+    <!-- شاشة بدء رحلة جديدة -->
+    <div id="newTripScreen" class="hidden">
+        <div class="card">
+            <div style="text-align:center; padding: 10px 0 15px; border-bottom: 2px solid #e2e8f0; margin-bottom: 20px;">
+                <div style="font-size: 14px; color: #718096;">مرحباً</div>
+                <div style="font-size: 20px; font-weight: 700; color: #1e3a5f;" id="welcomeDriverName">-</div>
+                <div style="font-size: 14px; color: #718096; margin-top: 4px;">سيارة: <span id="welcomeCarName" style="font-weight: 600; color: #2c5282;">-</span></div>
+            </div>
+            <h2>🚀 بدء رحلة جديدة</h2>
+
+            <div class="form-group">
+                <label>الوجهة <span class="required-star">*</span></label>
+                <input type="text" id="destination" placeholder="مثال: دمشق - حلب">
+            </div>
+
+            <div class="form-group">
+                <label>صورة العداد (البداية) <span class="required-star">*</span></label>
+                <div class="image-upload" id="startImageUpload" onclick="document.getElementById('startImageInput').click()">
+                    <div class="icon">📷</div>
+                    <div class="text">اضغط لتصوير العداد</div>
+                    <input type="file" id="startImageInput" accept="image/*" capture="environment">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>قراءة العداد الحالية (كم) <span class="required-star">*</span></label>
+                <input type="number" id="startKm" step="0.1" placeholder="أدخل قراءة العداد" inputmode="decimal">
+            </div>
+
+            <button class="btn btn-success" id="startTripBtn" onclick="startTrip()">🚀 بدء الرحلة</button>
+        </div>
+
+        <div class="card">
+            <h2>📋 آخر 5 رحلات</h2>
+            <div id="recentTripsList" class="recent-trips">
+                <div style="text-align:center; color:#a0aec0; font-size:13px;">جاري التحميل...</div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- الشريط السفلي -->
+<div class="bottom-nav" id="bottomNav">
+    <button onclick="showNewTrip()" class="active" id="navNewTrip">
+        <span class="icon">🚀</span>
+        رحلة جديدة
+    </button>
+    <button onclick="changeIdentity()" id="navChangeDriver">
+        <span class="icon">👤</span>
+        تغيير السائق
+    </button>
+    <button onclick="refreshData()" id="navRefresh">
+        <span class="icon">🔄</span>
+        تحديث
+    </button>
+</div>
+
+<script>
+// ============== متغيرات عامة ==============
+let currentDriver = null;
+let currentCar = null;
+let currentActiveTrip = null;
+let startImageData = null;
+let endImageData = null;
+
+// ============== التهيئة ==============
+document.addEventListener('DOMContentLoaded', () => {
+    updateOnlineStatus();
+    window.addEventListener('online', updateOnlineStatus);
+    window.addEventListener('offline', updateOnlineStatus);
+    loadSavedIdentity();
+});
+
+function updateOnlineStatus() {
+    const badge = document.getElementById('statusBadge');
+    if (navigator.onLine) {
+        badge.className = 'status-badge status-online';
+        badge.textContent = '● متصل';
+    } else {
+        badge.className = 'status-badge status-offline';
+        badge.textContent = '● غير متصل';
+    }
+}
+
+function showAlert(message, type = 'info') {
+    const alertBox = document.getElementById('alertBox');
+    alertBox.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+    setTimeout(() => { alertBox.innerHTML = ''; }, 5000);
+    alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ============== تحميل الحالة المحفوظة ==============
+function loadSavedIdentity() {
+    const savedDriverId = localStorage.getItem('driver_id');
+    const savedCarId = localStorage.getItem('car_id');
+    
+    if (savedDriverId && savedCarId) {
+        loadInitData(savedDriverId, savedCarId);
+    } else {
+        loadInitData(null, null);
+    }
+}
+
+async function loadInitData(savedDriverId, savedCarId) {
+    try {
+        const response = await fetch('/api/driver/init');
+        const data = await response.json();
+        
+        if (!data.success) {
+            showAlert('خطأ في تحميل البيانات: ' + data.error, 'error');
+            return;
+        }
+        
+        const driverSelect = document.getElementById('driverSelect');
+        driverSelect.innerHTML = '<option value="">-- اختر السائق --</option>';
+        data.drivers.forEach(d => {
+            const opt = document.createElement('option');
+            opt.value = d.id;
+            opt.textContent = d.name;
+            driverSelect.appendChild(opt);
+        });
+        
+        const carSelect = document.getElementById('carSelect');
+        carSelect.innerHTML = '<option value="">-- اختر السيارة --</option>';
+        data.cars.forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.id;
+            opt.textContent = c.name + (c.plate_number ? ' - ' + c.plate_number : '');
+            carSelect.appendChild(opt);
+        });
+        
+        if (savedDriverId && savedCarId) {
+            const driver = data.drivers.find(d => d.id == savedDriverId);
+            const car = data.cars.find(c => c.id == savedCarId);
+            
+            if (driver && car) {
+                currentDriver = driver;
+                currentCar = car;
+                checkActiveTrip();
+                return;
+            }
+        }
+        
+        showScreen('login');
+        
+    } catch (error) {
+        showAlert('فشل الاتصال بالسيرفر: ' + error.message, 'error');
+        showScreen('login');
+    }
+}
+
+// ============== إدارة الشاشات ==============
+function showScreen(screen) {
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('activeTripScreen').classList.add('hidden');
+    document.getElementById('newTripScreen').classList.add('hidden');
+    
+    if (screen === 'login') {
+        document.getElementById('loginScreen').classList.remove('hidden');
+        document.getElementById('bottomNav').style.display = 'none';
+    } else if (screen === 'active') {
+        document.getElementById('activeTripScreen').classList.remove('hidden');
+        document.getElementById('bottomNav').style.display = 'none';
+    } else if (screen === 'new') {
+        document.getElementById('newTripScreen').classList.remove('hidden');
+        document.getElementById('bottomNav').style.display = 'flex';
+    }
+}
+
+function saveIdentity() {
+    const driverId = document.getElementById('driverSelect').value;
+    const carId = document.getElementById('carSelect').value;
+    
+    if (!driverId || !carId) {
+        showAlert('الرجاء اختيار السائق والسيارة', 'error');
+        return;
+    }
+    
+    localStorage.setItem('driver_id', driverId);
+    localStorage.setItem('car_id', carId);
+    location.reload();
+}
+
+function changeIdentity() {
+    if (confirm('هل تريد تغيير السائق/السيارة؟')) {
+        localStorage.removeItem('driver_id');
+        localStorage.removeItem('car_id');
+        location.reload();
+    }
+}
+
+// ============== فحص الرحلة النشطة ==============
+async function checkActiveTrip() {
+    if (!currentDriver) return;
+    
+    try {
+        const response = await fetch(`/api/driver/active_trip/${currentDriver.id}`);
+        const data = await response.json();
+        
+        if (data.success && data.has_active) {
+            currentActiveTrip = data.trip;
+            displayActiveTrip(data.trip);
+            showScreen('active');
+        } else {
+            displayNewTripScreen();
+            showScreen('new');
+            loadRecentTrips();
+        }
+    } catch (error) {
+        showAlert('فشل الاتصال: ' + error.message, 'error');
+    }
+}
+
+function displayActiveTrip(trip) {
+    document.getElementById('activeDriverName').textContent = currentDriver.name;
+    document.getElementById('activeCarName').textContent = trip.car_name;
+    document.getElementById('activeDestination').textContent = trip.destination || '-';
+    document.getElementById('activeStartKm').textContent = trip.start_km + ' كم';
+    document.getElementById('activeStartTime').textContent = trip.start_time || '-';
+    document.getElementById('startKmHint').textContent = trip.start_km;
+}
+
+function displayNewTripScreen() {
+    document.getElementById('welcomeDriverName').textContent = currentDriver.name;
+    document.getElementById('welcomeCarName').textContent = currentCar.name;
+}
+
+// ============== التحقق من العداد النهائي ==============
+function checkEndKm() {
+    const endKmInput = document.getElementById('endKm');
+    const warning = document.getElementById('rangeWarning');
+    const endKm = parseFloat(endKmInput.value);
+    const startKm = parseFloat(currentActiveTrip ? currentActiveTrip.start_km : 0);
+    
+    if (endKmInput.value === '' || isNaN(endKm)) {
+        endKmInput.classList.remove('error');
+        warning.classList.remove('show');
+        return;
+    }
+    
+    if (endKm <= startKm) {
+        endKmInput.classList.add('error');
+        warning.classList.add('show');
+    } else {
+        endKmInput.classList.remove('error');
+        warning.classList.remove('show');
+    }
+}
+
+// ============== رفع الصور ==============
+document.getElementById('startImageInput').addEventListener('change', function(e) {
+    handleImageSelect(e, 'startImageUpload', 'start');
+});
+
+document.getElementById('endImageInput').addEventListener('change', function(e) {
+    handleImageSelect(e, 'endImageUpload', 'end');
+});
+
+function handleImageSelect(event, uploadId, type) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        compressImage(e.target.result, 1000, 0.7, function(compressedData) {
+            if (type === 'start') {
+                startImageData = compressedData;
+            } else {
+                endImageData = compressedData;
+            }
+            
+            const upload = document.getElementById(uploadId);
+            upload.classList.add('has-image');
+            upload.classList.remove('error');
+            upload.innerHTML = `
+                <img src="${compressedData}" alt="صورة العداد">
+                <div class="text" style="color: #38a169; margin-top: 8px;">✓ تم التصوير - اضغط للتغيير</div>
+                <input type="file" id="${type}ImageInput" accept="image/*" capture="environment">
+            `;
+            
+            document.getElementById(`${type}ImageInput`).addEventListener('change', function(e) {
+                handleImageSelect(e, uploadId, type);
+            });
+        });
+    };
+    reader.readAsDataURL(file);
+}
+
+function compressImage(dataUrl, maxSize, quality, callback) {
+    const img = new Image();
+    img.onload = function() {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height && width > maxSize) {
+            height = (height * maxSize) / width;
+            width = maxSize;
+        } else if (height > maxSize) {
+            width = (width * maxSize) / height;
+            height = maxSize;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        callback(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.src = dataUrl;
+}
+
+// ============== بدء الرحلة ==============
+async function startTrip() {
+    const destination = document.getElementById('destination').value.trim();
+    const startKmInput = document.getElementById('startKm');
+    const startKm = startKmInput.value;
+    const startUpload = document.getElementById('startImageUpload');
+    
+    // تنظيف الأخطاء
+    startKmInput.classList.remove('error');
+    startUpload.classList.remove('error');
+    
+    // ✅ التحقق: الوجهة
+    if (!destination) {
+        showAlert('⚠️ الرجاء إدخال الوجهة', 'error');
+        return;
+    }
+    
+    // ✅ التحقق: صورة العداد إلزامية
+    if (!startImageData) {
+        startUpload.classList.add('error');
+        showAlert('⚠️ الرجاء تصوير العداد أولاً', 'error');
+        startUpload.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    
+    // ✅ التحقق: العداد إلزامي
+    if (!startKm || startKm.trim() === '') {
+        startKmInput.classList.add('error');
+        showAlert('⚠️ الرجاء إدخال قراءة العداد', 'error');
+        startKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    
+    // ✅ التحقق: العداد رقم صحيح وأكبر من صفر
+    const startKmNum = parseFloat(startKm);
+    if (isNaN(startKmNum) || startKmNum <= 0) {
+        startKmInput.classList.add('error');
+        showAlert('⚠️ قراءة العداد يجب أن تكون رقماً أكبر من صفر', 'error');
+        startKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    
+    const btn = document.getElementById('startTripBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
+    
+    try {
+        const response = await fetch('/api/driver/start_trip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                driver_id: currentDriver.id,
+                car_id: currentCar.id,
+                destination: destination,
+                start_km: startKmNum,
+                start_image: startImageData
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert('✓ تم بدء الرحلة بنجاح', 'success');
+            document.getElementById('destination').value = '';
+            document.getElementById('startKm').value = '';
+            startImageData = null;
+            const upload = document.getElementById('startImageUpload');
+            upload.classList.remove('has-image');
+            upload.innerHTML = `
+                <div class="icon">📷</div>
+                <div class="text">اضغط لتصوير العداد</div>
+                <input type="file" id="startImageInput" accept="image/*" capture="environment">
+            `;
+            document.getElementById('startImageInput').addEventListener('change', function(e) {
+                handleImageSelect(e, 'startImageUpload', 'start');
+            });
+            
+            setTimeout(() => checkActiveTrip(), 800);
+        } else {
+            showAlert('❌ ' + data.error, 'error');
+        }
+    } catch (error) {
+        showAlert('فشل الاتصال: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🚀 بدء الرحلة';
+    }
+}
+
+// ============== إنهاء الرحلة ==============
+async function endTrip() {
+    const endKmInput = document.getElementById('endKm');
+    const endKm = endKmInput.value;
+    const notes = document.getElementById('endNotes').value.trim();
+    const endUpload = document.getElementById('endImageUpload');
+    
+    // تنظيف الأخطاء
+    endKmInput.classList.remove('error');
+    endUpload.classList.remove('error');
+    
+    // ✅ التحقق: صورة العداد النهائية إلزامية
+    if (!endImageData) {
+        endUpload.classList.add('error');
+        showAlert('⚠️ الرجاء تصوير العداد النهائي', 'error');
+        endUpload.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    
+    // ✅ التحقق: العداد النهائي إلزامي
+    if (!endKm || endKm.trim() === '') {
+        endKmInput.classList.add('error');
+        showAlert('⚠️ الرجاء إدخال قراءة العداد النهائية', 'error');
+        endKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    
+    // ✅ التحقق: العداد رقم صحيح
+    const endKmNum = parseFloat(endKm);
+    if (isNaN(endKmNum) || endKmNum <= 0) {
+        endKmInput.classList.add('error');
+        showAlert('⚠️ قراءة العداد يجب أن تكون رقماً أكبر من صفر', 'error');
+        endKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    
+    // ✅ التحقق: العداد النهائي أكبر من الابتدائي
+    const startKmNum = parseFloat(currentActiveTrip ? currentActiveTrip.start_km : 0);
+    if (endKmNum <= startKmNum) {
+        endKmInput.classList.add('error');
+        document.getElementById('rangeWarning').classList.add('show');
+        showAlert(`⚠️ قراءة العداد النهائية (${endKmNum}) يجب أن تكون أكبر من قراءة البداية (${startKmNum})`, 'error');
+        endKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+    
+    if (!confirm('هل أنت متأكد من إنهاء الرحلة؟')) return;
+    
+    const btn = document.getElementById('endTripBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
+    
+    try {
+        const response = await fetch('/api/driver/end_trip', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                trip_id: currentActiveTrip.id,
+                end_km: endKmNum,
+                end_image: endImageData,
+                notes: notes
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert(`✓ تم إنهاء الرحلة بنجاح — المسافة: ${data.distance || 0} كم`, 'success');
+            endImageData = null;
+            currentActiveTrip = null;
+            setTimeout(() => {
+                document.getElementById('endKm').value = '';
+                document.getElementById('endNotes').value = '';
+                document.getElementById('rangeWarning').classList.remove('show');
+                checkActiveTrip();
+            }, 1200);
+        } else {
+            showAlert('❌ ' + data.error, 'error');
+        }
+    } catch (error) {
+        showAlert('فشل الاتصال: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🏁 إنهاء الرحلة';
+    }
+}
+
+// ============== آخر الرحلات ==============
+async function loadRecentTrips() {
+    if (!currentDriver) return;
+    
+    try {
+        const response = await fetch(`/api/driver/recent_trips/${currentDriver.id}`);
+        const data = await response.json();
+        
+        const list = document.getElementById('recentTripsList');
+        
+        if (data.success && data.trips.length > 0) {
+            list.innerHTML = data.trips.map(t => {
+                const status = t.end_km ? '✓' : '⏳';
+                const distanceText = t.distance ? `${t.distance} كم` : 'قيد التنفيذ';
+                return `
+                    <div class="recent-trip-item">
+                        <div class="trip-header">
+                            <span>${status} ${t.destination || 'بدون وجهة'}</span>
+                            <span>${t.trip_date}</span>
+                        </div>
+                        <div class="trip-details">
+                            🚗 ${t.car_name} | 📏 ${distanceText}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        } else {
+            list.innerHTML = '<div style="text-align:center; color:#a0aec0; font-size:13px;">لا يوجد رحلات سابقة</div>';
+        }
+    } catch (error) {
+        document.getElementById('recentTripsList').innerHTML = 
+            '<div style="text-align:center; color:#e53e3e; font-size:13px;">فشل تحميل الرحلات</div>';
+    }
+}
+
+// ============== التنقل السفلي ==============
+function showNewTrip() {
+    checkActiveTrip();
+    setActiveNav('navNewTrip');
+}
+
+function refreshData() {
+    setActiveNav('navRefresh');
+    if (currentActiveTrip) {
+        checkActiveTrip();
+    } else {
+        loadRecentTrips();
+        showAlert('✓ تم التحديث', 'success');
+    }
+}
+
+function setActiveNav(id) {
+    document.querySelectorAll('.bottom-nav button').forEach(b => b.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+}
+
+// تحديث تلقائي كل 30 ثانية
+setInterval(() => {
+    if (currentDriver && !currentActiveTrip) {
+        loadRecentTrips();
+    }
+}, 30000);
+
+</script>
+
+</body>
+</html>

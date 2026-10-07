@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}الإضافي - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>⏰ إدارة الساعات الإضافية</h2>
+    
+    {% if is_admin %}
+    <form method="POST" action="/overtime/add" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <h3 style="margin-bottom: 15px; color: #1e3a5f;">➕ إضافة إضافي جديد</h3>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>📅 التاريخ *</label>
+                <input type="date" name="date" required>
+            </div>
+            <div class="form-group">
+                <label>👤 السائق *</label>
+                <select name="driver_id" required>
+                    <option value="">-- اختر السائق --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}">{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>🌅 ساعات إضافي صباحية</label>
+                <input type="number" step="0.5" name="morning_hours" value="0" min="0">
+            </div>
+            <div class="form-group">
+                <label>🌙 ساعات إضافي مسائية</label>
+                <input type="number" step="0.5" name="evening_hours" value="0" min="0">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>📋 ملاحظات</label>
+            <input type="text" name="notes">
+        </div>
+        
+        <button type="submit" class="btn btn-success">💾 حفظ الإضافي</button>
+    </form>
+    {% endif %}
+    
+    <h3 style="margin-bottom: 15px; color: #1e3a5f;">📋 سجل الإضافي</h3>
+    <div style="overflow-x: auto;">
+        <table style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>التاريخ</th>
+                    <th>السائق</th>
+                    <th>🌅 صباحية</th>
+                    <th>🌙 مسائية</th>
+                    <th>الإجمالي</th>
+                    <th>ملاحظات</th>
+                    {% if is_admin %}<th>إجراءات</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for o in overtimes %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ o.date }}</td>
+                    <td>{{ o.driver_name }}</td>
+                    <td>{{ o.morning_hours or 0 }} ساعة</td>
+                    <td>{{ o.evening_hours or 0 }} ساعة</td>
+                    <td style="font-weight: 700; color: #1e3a5f;">
+                        {{ "%.1f"|format((o.morning_hours or 0) + (o.evening_hours or 0)) }} ساعة
+                    </td>
+                    <td>{{ o.notes or '-' }}</td>
+                    {% if is_admin %}
+                    <td>
+                        <a href="/overtime/delete/{{ o.id }}" class="btn btn-danger" style="padding: 5px 10px;" onclick="return confirm('هل أنت متأكد؟')">🗑️</a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if not overtimes %}
+    <p style="color: #718096; text-align: center; padding: 20px;">لا يوجد إضافي مسجل بعد.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

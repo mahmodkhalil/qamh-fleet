@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول - نظام حركة سيارات مجموعة قمح القابضة</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2c5282 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .login-box {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+        .login-box h1 { color: #1e3a5f; font-size: 24px; margin-bottom: 10px; }
+        .login-box .subtitle { color: #718096; font-size: 14px; margin-bottom: 30px; }
+        .login-box .icon { font-size: 60px; margin-bottom: 20px; }
+        .tabs {
+            display: flex;
+            margin-bottom: 25px;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid #e2e8f0;
+        }
+        .tab {
+            flex: 1;
+            padding: 12px;
+            background: #f7fafc;
+            color: #4a5568;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 15px;
+            border: none;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .tab:hover { background: #edf2f7; }
+        .tab.active { background: #1e3a5f; color: white; }
+        .tab.viewer-tab.active { background: #38a169; }
+        .form-group { margin-bottom: 20px; text-align: right; }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #4a5568;
+            font-weight: 500;
+        }
+        .form-group input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #cbd5e0;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: inherit;
+        }
+        .form-group input:focus {
+            outline: none;
+            border-color: #1e3a5f;
+            box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.1);
+        }
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            background: #1e3a5f;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        .btn-login:hover { background: #2c5282; }
+        .btn-login.viewer-btn { background: #38a169; }
+        .btn-login.viewer-btn:hover { background: #2f855a; }
+        .alert {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+        .alert-error { background: #fed7d7; color: #742a2a; border-right: 4px solid #e53e3e; }
+        .alert-success { background: #c6f6d5; color: #22543d; border-right: 4px solid #38a169; }
+        .footer-note { margin-top: 20px; color: #a0aec0; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+<div class="login-box">
+    <div class="icon">🌾</div>
+    <h1>نظام حركة سيارات</h1>
+    <p class="subtitle">مجموعة قمح القابضة</p>
+    
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+    
+    <div class="tabs">
+        <button type="button" class="tab active" id="tab-admin" onclick="switchTab('admin')">👤 مسؤول</button>
+        <button type="button" class="tab viewer-tab" id="tab-viewer" onclick="switchTab('viewer')">👁️ مشاهد</button>
+    </div>
+    
+    <form method="POST" action="/login">
+        <input type="hidden" name="login_type" id="login_type" value="admin">
+        <div class="form-group">
+            <label id="password-label">🔐 كلمة سر المسؤول</label>
+            <input type="password" name="password" required autofocus placeholder="أدخل كلمة السر" id="password-input">
+        </div>
+        <button type="submit" class="btn-login" id="submit-btn">دخول كمسؤول</button>
+    </form>
+    
+    <p class="footer-note">للاستفسار، تواصل مع مسؤول الحركة</p>
+</div>
+
+<script>
+function switchTab(type) {
+    var tabAdmin = document.getElementById('tab-admin');
+    var tabViewer = document.getElementById('tab-viewer');
+    var loginType = document.getElementById('login_type');
+    var passwordLabel = document.getElementById('password-label');
+    var submitBtn = document.getElementById('submit-btn');
+    var passwordInput = document.getElementById('password-input');
+    
+    if (type === 'admin') {
+        tabAdmin.classList.add('active');
+        tabViewer.classList.remove('active');
+        loginType.value = 'admin';
+        passwordLabel.textContent = '🔐 كلمة سر المسؤول';
+        submitBtn.textContent = 'دخول كمسؤول';
+        submitBtn.classList.remove('viewer-btn');
+    } else {
+        tabAdmin.classList.remove('active');
+        tabViewer.classList.add('active');
+        loginType.value = 'viewer';
+        passwordLabel.textContent = '🔐 كلمة سر المشاهد';
+        submitBtn.textContent = 'دخول كمشاهد';
+        submitBtn.classList.add('viewer-btn');
+    }
+    passwordInput.value = '';
+    passwordInput.focus();
+}
+</script>
+
+</body>
+</html>

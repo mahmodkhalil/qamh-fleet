@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}الرئيسية - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<!-- 🆕 شريط التنبيه بالرحلات الجديدة من تطبيق السائق -->
+{% if is_admin and pending_trips_count and pending_trips_count > 0 %}
+<a href="/admin/pending" class="pending-alert-bar">
+    <div class="content">
+        <span class="icon-pulse">🔔</span>
+        <span>
+            يوجد <strong>{{ pending_trips_count }}</strong> رحلة جديدة من تطبيق السائق تحتاج للمراجعة
+        </span>
+    </div>
+    <span class="arrow">←</span>
+</a>
+{% endif %}
+
+{% if alerts %}
+<div class="card" style="border-right: 4px solid #d69e2e;">
+    <h2>🔔 تنبيهات الصيانة ({{ alerts|length }} سيارة)</h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px;">
+        {% for alert in alerts %}
+        <div style="padding: 20px; border-radius: 10px; 
+            {% if alert.status == 'red' %}
+            background: #fed7d7; border-right: 5px solid #e53e3e;
+            {% elif alert.status == 'yellow' %}
+            background: #fefcbf; border-right: 5px solid #d69e2e;
+            {% else %}
+            background: #c6f6d5; border-right: 5px solid #38a169;
+            {% endif %}
+        ">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h3 style="margin: 0; font-size: 18px; color: #1e3a5f;">
+                    {% if alert.status == 'red' %}🔴
+                    {% elif alert.status == 'yellow' %}🟡
+                    {% else %}🟢
+                    {% endif %}
+                    {{ alert.car_name }}
+                </h3>
+            </div>
+            
+            <div style="font-size: 14px; color: #4a5568; margin-bottom: 5px;">
+                <strong>نوع الصيانة:</strong> {{ alert.type }}
+            </div>
+            <div style="font-size: 14px; color: #4a5568; margin-bottom: 5px;">
+                <strong>العداد الحالي:</strong> {{ alert.current_km|round(0) }} كم
+            </div>
+            <div style="font-size: 14px; color: #4a5568; margin-bottom: 5px;">
+                <strong>الصيانة عند:</strong> {{ alert.next_km|round(0) }} كم
+            </div>
+            <div style="font-size: 15px; font-weight: 700; margin-top: 10px;
+                {% if alert.status == 'red' %}color: #c53030;
+                {% elif alert.status == 'yellow' %}color: #b7791f;
+                {% else %}color: #2f855a;
+                {% endif %}
+            ">
+                {% if alert.status == 'red' %}
+                ⚠️ {{ alert.message }}
+                {% elif alert.status == 'yellow' %}
+                ⏰ {{ alert.message }}
+                {% else %}
+                ✓ {{ alert.message }}
+                {% endif %}
+            </div>
+            
+            <div style="margin-top: 12px; font-size: 12px; color: #718096;">
+                آخر صيانة: {{ alert.last_date }}
+            </div>
+            
+            {% if is_admin %}
+            <a href="/maintenance" style="display: inline-block; margin-top: 10px; background: #1e3a5f; color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none; font-size: 13px;">🔧 تسجيل صيانة</a>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="stats-grid">
+    <div class="stat-box">
+        <div class="number">{{ stats.cars }}</div>
+        <div class="label">🚗 السيارات</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ stats.drivers }}</div>
+        <div class="label">👤 السائقين</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ stats.trips_month }}</div>
+        <div class="label">📅 رحلات هذا الشهر</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ stats.km_month }}</div>
+        <div class="label">🛣️ كم هذا الشهر</div>
+    </div>
+</div>
+
+{% if is_admin %}
+<div class="card">
+    <h2>➕ إجراءات سريعة</h2>
+    <a href="/add_trip" class="btn btn-primary">➕ إضافة رحلة جديدة</a>
+    <a href="/fuel" class="btn btn-success">⛽ تسجيل تعبئة بنزين</a>
+    <a href="/maintenance" class="btn btn-warning">🔧 تسجيل صيانة</a>
+</div>
+{% endif %}
+
+<div class="card">
+    <h2>📅 آخر الرحلات (مجمّعة حسب السيارة)</h2>
+    {% if trips_by_car %}
+    {% for car_name, car_trips in trips_by_car.items() %}
+    <div style="margin-bottom: 25px; padding: 15px; background: #f7fafc; border-radius: 8px; border-right: 4px solid #1e3a5f;">
+        <h3 style="color: #1e3a5f; margin-bottom: 12px; font-size: 17px;">
+            🚗 {{ car_name }}
+            <span style="font-size: 13px; font-weight: 400; color: #718096;">
+                ({{ car_trips|length }} رحلة)
+            </span>
+        </h3>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>التاريخ</th>
+                        <th>السائق</th>
+                        <th>بداية الانطلاق</th>
+                        <th>الوجهة</th>
+                        <th>نوع الرحلة</th>
+                        <th>طالب الرحلة</th>
+                        <th>الخروج</th>
+                        <th>العودة</th>
+                        <th>عداد البداية</th>
+                        <th>عداد النهاية</th>
+                        <th>المسافة</th>
+                        {% if is_admin %}<th>إجراءات</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for trip in car_trips %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ trip.trip_date }}</td>
+                        <td>{{ trip.driver_name }}</td>
+                        <td>{{ trip.start_location or '-' }}</td>
+                        <td>{{ trip.destination or '-' }}</td>
+                        <td>{{ trip.trip_type or '-' }}</td>
+                        <td>{{ trip.requester or '-' }}</td>
+                        <td>{{ trip.exit_time or '-' }}</td>
+                        <td>{{ trip.return_time or '-' }}</td>
+                        <td>{{ trip.start_km or '-' }}</td>
+                        <td>{{ trip.end_km or '-' }}</td>
+                        <td>{{ trip.distance or '-' }}</td>
+                        {% if is_admin %}
+                        <td>
+                            <a href="/trips/edit/{{ trip.id }}" class="btn btn-primary" style="padding: 3px 8px; font-size: 11px;">✏️</a>
+                            <a href="/trips/delete/{{ trip.id }}" class="btn btn-danger" style="padding: 3px 8px; font-size: 11px;" onclick="return confirm('هل أنت متأكد من حذف الرحلة؟')">🗑️</a>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                    <tr style="background: #fef3c7; font-weight: 700; border-top: 3px solid #d69e2e;">
+                        <td colspan="10" style="text-align: center; padding: 10px; color: #744210;">📊 الإجمالي</td>
+                        <td colspan="1" style="padding: 10px;">-</td>
+                        <td style="padding: 10px; color: #744210;">
+                            {% set total_km = namespace(value=0) %}
+                            {% for trip in car_trips %}
+                                {% set total_km.value = total_km.value + (trip.distance or 0) %}
+                            {% endfor %}
+                            {{ "%.1f"|format(total_km.value) }}
+                        </td>
+                        {% if is_admin %}<td style="padding: 10px;">-</td>{% endif %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p style="color: #718096; text-align: center; padding: 20px;">لا توجد رحلات مسجلة بعد.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

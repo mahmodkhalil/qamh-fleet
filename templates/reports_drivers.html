@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}تقرير السائقين - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>👤 تقرير السائقين (مهمات السفر + الإضافي)</h2>
+    
+    <form method="GET" action="/reports/drivers" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>👤 السائق</label>
+                <select name="driver_id">
+                    <option value="">-- كل السائقين --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}" {% if driver.id|string == selected_driver %}selected{% endif %}>{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>📅 من تاريخ</label>
+                <input type="date" name="date_from" value="{{ date_from or '' }}">
+            </div>
+            <div class="form-group">
+                <label>📅 إلى تاريخ</label>
+                <input type="date" name="date_to" value="{{ date_to or '' }}">
+            </div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary">🔍 عرض</button>
+        <a href="/reports/drivers" class="btn btn-secondary">🔄</a>
+        <a href="/reports/drivers/export?driver_id={{ selected_driver or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}" class="btn btn-success">📥 تصدير Excel</a>
+    </form>
+</div>
+
+{% if has_filter %}
+    {% if drivers_by_name %}
+    <div class="card">
+        <h2>📊 ملخص حسب السائق</h2>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>السائق</th>
+                        <th>🌍 عدد مهمات السفر</th>
+                        <th>🛣️ مجموع الكم</th>
+                        <th>🌅 ساعات صباحية</th>
+                        <th>🌙 ساعات مسائية</th>
+                        <th>⏰ إجمالي الإضافي</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for driver_name, data in drivers_by_name.items() %}
+                    <tr>
+                        <td><strong>{{ driver_name }}</strong></td>
+                        <td style="font-weight: 600; color: #1e3a5f;">{{ data.travel_count }}</td>
+                        <td style="font-weight: 600; color: #1e3a5f;">{{ "%.1f"|format(data.travel_km or 0) }} كم</td>
+                        <td>{{ "%.1f"|format(data.morning_hours or 0) }} ساعة</td>
+                        <td>{{ "%.1f"|format(data.evening_hours or 0) }} ساعة</td>
+                        <td style="font-weight: 700; color: #d69e2e;">{{ "%.1f"|format(data.total_overtime or 0) }} ساعة</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    {% for driver_name, data in drivers_by_name.items() %}
+    <div class="card" style="border-right: 4px solid #1e3a5f;">
+        <h3 style="color: #1e3a5f; margin-bottom: 15px;">👤 {{ driver_name }}</h3>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 15px;">
+            <div style="background:#e6fffa; padding:10px; border-radius:6px;">
+                <strong>✈️ مهمات السفر:</strong> {{ data.travel_count }}
+            </div>
+            <div style="background:#e6fffa; padding:10px; border-radius:6px;">
+                <strong>🛣️ مجموع الكم:</strong> {{ "%.1f"|format(data.travel_km or 0) }} كم
+            </div>
+            <div style="background:#fffaf0; padding:10px; border-radius:6px;">
+                <strong>🌅 صباحية:</strong> {{ "%.1f"|format(data.morning_hours or 0) }} ساعة
+            </div>
+            <div style="background:#fffaf0; padding:10px; border-radius:6px;">
+                <strong>🌙 مسائية:</strong> {{ "%.1f"|format(data.evening_hours or 0) }} ساعة
+            </div>
+            <div style="background:#fefcbf; padding:10px; border-radius:6px;">
+                <strong>⏰ إجمالي الإضافي:</strong> {{ "%.1f"|format(data.total_overtime or 0) }} ساعة
+            </div>
+        </div>
+        
+        {% if data.travel_missions %}
+        <h4 style="margin-top: 15px; color: #1e3a5f;">✈️ مهمات السفر:</h4>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>الوصف</th>
+                        <th>المسافة (كم)</th>
+                        <th>مهمة سفر؟</th>
+                        <th>الذهاب</th>
+                        <th>العودة</th>
+                        <th>ملاحظات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tm in data.travel_missions %}
+                    <tr>
+                        <td>{{ tm.date }}</td>
+                        <td>{{ tm.description or '-' }}</td>
+                        <td>{{ tm.distance_km or 0 }}</td>
+                        <td>
+                            {% if tm.is_travel == 1 %}
+                            <span class="badge" style="background:#c6f6d5;color:#22543d;">✅ نعم</span>
+                            {% else %}
+                            <span class="badge" style="background:#fed7d7;color:#742a2a;">❌ لا</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ tm.departure_time or '-' }}</td>
+                        <td>{{ tm.return_time or '-' }}</td>
+                        <td>{{ tm.notes or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+        
+        {% if data.overtimes %}
+        <h4 style="margin-top: 15px; color: #d69e2e;">⏰ الإضافي:</h4>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>التاريخ</th>
+                        <th>🌅 صباحية</th>
+                        <th>🌙 مسائية</th>
+                        <th>الإجمالي</th>
+                        <th>ملاحظات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for o in data.overtimes %}
+                    <tr>
+                        <td>{{ o.date }}</td>
+                        <td>{{ "%.1f"|format(o.morning_hours or 0) }}</td>
+                        <td>{{ "%.1f"|format(o.evening_hours or 0) }}</td>
+                        <td style="font-weight: 600; color: #d69e2e;">{{ "%.1f"|format((o.morning_hours or 0) + (o.evening_hours or 0)) }}</td>
+                        <td>{{ o.notes or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    {% else %}
+    <div class="card">
+        <p style="text-align: center; color: #718096; padding: 30px;">لا توجد بيانات مطابقة للفلتر.</p>
+    </div>
+    {% endif %}
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">👆 اختر السائق أو الفترة الزمنية واضغط "عرض" لعرض التقرير.</p>
+</div>
+{% endif %}
+
+{% endblock %}

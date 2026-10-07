@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}نظام حركة سيارات مجموعة قمح القابضة{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        .navbar {
+            background: #1e3a5f;
+            color: white;
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .navbar .back-btn {
+            color: white;
+            text-decoration: none;
+            background: #4a5568;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .navbar .back-btn:hover { background: #2d3748; }
+        .navbar h1 { font-size: 22px; font-weight: 600; }
+        .navbar .right-side {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .navbar .lang-switch a {
+            color: white;
+            text-decoration: none;
+            background: #2c5282;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .navbar .lang-switch a:hover { background: #2b6cb0; }
+        .navbar .settings-btn {
+            color: white;
+            text-decoration: none;
+            background: #718096;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .navbar .settings-btn:hover { background: #4a5568; }
+        .navbar .logout-btn {
+            color: white;
+            text-decoration: none;
+            background: #e53e3e;
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+        .navbar .logout-btn:hover { background: #c53030; }
+        .navbar .role-badge {
+            background: #38a169;
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .navbar .role-badge.viewer { background: #d69e2e; }
+        .container {
+            max-width: 1300px;
+            margin: 30px auto;
+            padding: 0 20px;
+        }
+        .menu {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 25px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .menu > a, .menu .dropdown > button {
+            background: white;
+            color: #1e3a5f;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            border: 1px solid #e2e8f0;
+            transition: all 0.2s;
+            font-family: inherit;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            position: relative;
+        }
+        .menu > a:hover, .menu .dropdown > button:hover {
+            background: #1e3a5f;
+            color: white;
+        }
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background: white;
+            min-width: 220px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            border-radius: 8px;
+            z-index: 1000;
+            margin-top: 5px;
+            overflow: hidden;
+        }
+        .dropdown-content a {
+            color: #1e3a5f;
+            padding: 12px 18px;
+            text-decoration: none;
+            display: block;
+            font-weight: 500;
+            border-bottom: 1px solid #f0f2f5;
+            transition: all 0.2s;
+        }
+        .dropdown-content a:last-child { border-bottom: none; }
+        .dropdown-content a:hover {
+            background: #1e3a5f;
+            color: white;
+        }
+        .dropdown.show .dropdown-content { display: block; }
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 25px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        .card h2 {
+            color: #1e3a5f;
+            margin-bottom: 20px;
+            font-size: 20px;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: right;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background: #f7fafc;
+            color: #1e3a5f;
+            font-weight: 600;
+        }
+        tr:hover { background: #f7fafc; }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .btn-primary { background: #1e3a5f; color: white; }
+        .btn-primary:hover { background: #2c5282; }
+        .btn-success { background: #38a169; color: white; }
+        .btn-success:hover { background: #2f855a; }
+        .btn-danger { background: #e53e3e; color: white; }
+        .btn-danger:hover { background: #c53030; }
+        .btn-secondary { background: #718096; color: white; }
+        .btn-warning { background: #d69e2e; color: white; }
+        .btn-warning:hover { background: #b7791f; }
+        .form-group { margin-bottom: 15px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: 500;
+            color: #4a5568;
+        }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e0;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+            outline: none;
+            border-color: #1e3a5f;
+            box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.1);
+        }
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+        .form-row-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 15px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        .stat-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            border-right: 4px solid #1e3a5f;
+        }
+        .stat-box .number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #1e3a5f;
+        }
+        .stat-box .label {
+            color: #718096;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        .alert {
+            padding: 12px 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border-right: 4px solid #38a169;
+        }
+        .alert-error {
+            background: #fed7d7;
+            color: #742a2a;
+            border-right: 4px solid #e53e3e;
+        }
+        .alert-red {
+            background: #fed7d7;
+            color: #742a2a;
+            border-right: 4px solid #e53e3e;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .alert-yellow {
+            background: #fefcbf;
+            color: #744210;
+            border-right: 4px solid #d69e2e;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .alert-green {
+            background: #c6f6d5;
+            color: #22543d;
+            border-right: 4px solid #38a169;
+            padding: 15px 20px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #718096;
+            font-size: 13px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        /* 🆕 إشعار الرحلات الجديدة */
+        .pending-alert-bar {
+            background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(229, 62, 62, 0.35);
+            text-decoration: none;
+            transition: all 0.3s;
+            cursor: pointer;
+            animation: pulseAlert 2s infinite;
+        }
+        .pending-alert-bar:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(229, 62, 62, 0.5);
+            color: white;
+        }
+        @keyframes pulseAlert {
+            0%, 100% { box-shadow: 0 4px 15px rgba(229, 62, 62, 0.35); }
+            50% { box-shadow: 0 4px 25px rgba(229, 62, 62, 0.6); }
+        }
+        .pending-alert-bar .content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+        .pending-alert-bar .icon-pulse {
+            font-size: 26px;
+            animation: bellShake 1s infinite;
+        }
+        @keyframes bellShake {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-15deg); }
+            75% { transform: rotate(15deg); }
+        }
+        .pending-alert-bar .arrow {
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        /* 🆕 شارة التنبيه جنب زر الرئيسية */
+        .menu-badge {
+            background: #e53e3e;
+            color: white;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 700;
+            margin-right: 5px;
+            animation: badgePulse 1.5s infinite;
+        }
+        @keyframes badgePulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.15); }
+        }
+
+        @media (max-width: 768px) {
+            .form-row, .form-row-3 { grid-template-columns: 1fr; }
+            .navbar { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="navbar">
+    <a href="javascript:history.back()" class="back-btn" title="رجوع">⬅️ رجوع</a>
+    <h1>🌾 نظام حركة سيارات مجموعة قمح القابضة</h1>
+    <div class="right-side">
+        {% if is_admin %}
+        <span class="role-badge">👤 مسؤول</span>
+        {% else %}
+        <span class="role-badge viewer">👁️ مشاهد</span>
+        {% endif %}
+        <div class="lang-switch">
+            <a href="/lang/ar">عربي</a>
+            <a href="/lang/en">English</a>
+        </div>
+        <a href="/settings/passwords" class="settings-btn">⚙️ الإعدادات</a>
+        <a href="/logout" class="logout-btn">خروج</a>
+    </div>
+</div>
+
+<div class="container">
+    <div class="menu">
+        <a href="/">
+            🏠 الرئيسية
+            {% if is_admin and pending_trips_count and pending_trips_count > 0 %}
+            <span class="menu-badge">{{ pending_trips_count }}</span>
+            {% endif %}
+        </a>
+        {% if is_admin %}
+        <a href="/add_trip">➕ إضافة رحلة</a>
+        {% endif %}
+        <a href="/cars">🚗 السيارات</a>
+        <a href="/drivers">👤 السائقين</a>
+        <a href="/fuel">⛽ تعبئة الوقود</a>
+        <a href="/maintenance">🔧 الصيانة</a>
+        
+        <div class="dropdown" id="reportsDropdown">
+            <button onclick="toggleDropdown()">📊 التقارير ▼</button>
+            <div class="dropdown-content">
+                <a href="/reports">📊 التقارير الشهرية</a>
+                <a href="/reports/trips">📋 تقرير الرحلات</a>
+                <a href="/reports/fuel">⛽ تقرير الوقود</a>
+                <a href="/reports/maintenance">🔧 تقرير الصيانة</a>
+                <a href="/reports/drivers">👤 تقرير السائقين</a>
+            </div>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+</div>
+
+<div class="footer">
+    نظام حركة سيارات مجموعة قمح القابضة © 2026
+</div>
+
+<script>
+function toggleDropdown() {
+    document.getElementById('reportsDropdown').classList.toggle('show');
+}
+window.onclick = function(event) {
+    if (!event.target.matches('#reportsDropdown button') && !event.target.closest('#reportsDropdown')) {
+        var dropdown = document.getElementById('reportsDropdown');
+        if (dropdown.classList.contains('show')) {
+            dropdown.classList.remove('show');
+        }
+    }
+}
+
+// 🆕 تحديث عدد الرحلات الجديدة كل 30 ثانية
+{% if is_admin %}
+function checkPendingTrips() {
+    fetch('/api/admin/pending_count')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.count > 0) {
+                // تحديث الشارة في القائمة
+                const homeLink = document.querySelector('.menu > a[href="/"]');
+                if (homeLink) {
+                    let badge = homeLink.querySelector('.menu-badge');
+                    if (!badge) {
+                        badge = document.createElement('span');
+                        badge.className = 'menu-badge';
+                        homeLink.appendChild(badge);
+                    }
+                    badge.textContent = data.count;
+                }
+            }
+        })
+        .catch(err => console.log('خطأ في فحص الرحلات:', err));
+}
+
+// فحص دوري كل 30 ثانية
+setInterval(checkPendingTrips, 30000);
+{% endif %}
+</script>
+
+</body>
+</html>

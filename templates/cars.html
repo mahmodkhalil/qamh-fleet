@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}السيارات - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>🚗 إدارة السيارات</h2>
+    
+    {% if is_admin and edit_car %}
+    <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-right: 4px solid #f6ad55;">
+        <h3 style="margin-bottom: 15px; color: #744210;">✏️ تعديل السيارة: {{ edit_car.name }}</h3>
+        <form method="POST" action="/cars/edit/{{ edit_car.id }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>اسم السيارة *</label>
+                    <input type="text" name="name" value="{{ edit_car.name }}" required>
+                </div>
+                <div class="form-group">
+                    <label>رقم اللوحة</label>
+                    <input type="text" name="plate_number" value="{{ edit_car.plate_number or '' }}">
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>النوع</label>
+                    <input type="text" name="car_type" value="{{ edit_car.car_type or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>ملاحظات</label>
+                    <input type="text" name="notes" value="{{ edit_car.notes or '' }}">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-success">💾 حفظ التعديل</button>
+            <a href="/cars" class="btn btn-secondary">إلغاء</a>
+        </form>
+    </div>
+    {% endif %}
+    
+    {% if is_admin and not edit_car %}
+    <form method="POST" action="/cars/add" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <h3 style="margin-bottom: 15px; color: #1e3a5f;">➕ إضافة سيارة جديدة</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>اسم السيارة *</label>
+                <input type="text" name="name" required placeholder="مثال: كيا ريو 3020">
+            </div>
+            <div class="form-group">
+                <label>رقم اللوحة</label>
+                <input type="text" name="plate_number" placeholder="مثال: 123456">
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>النوع</label>
+                <input type="text" name="car_type" placeholder="مثال: سياحية / بيك أب">
+            </div>
+            <div class="form-group">
+                <label>ملاحظات</label>
+                <input type="text" name="notes">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-success">💾 إضافة السيارة</button>
+    </form>
+    {% endif %}
+    
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>الاسم</th>
+                    <th>رقم اللوحة</th>
+                    <th>النوع</th>
+                    <th>ملاحظات</th>
+                    {% if is_admin %}<th>إجراءات</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for car in cars %}
+                <tr>
+                    <td>{{ car.id }}</td>
+                    <td>{{ car.name }}</td>
+                    <td>{{ car.plate_number or '-' }}</td>
+                    <td>{{ car.car_type or '-' }}</td>
+                    <td>{{ car.notes or '-' }}</td>
+                    {% if is_admin %}
+                    <td>
+                        <a href="/cars/edit/{{ car.id }}" class="btn btn-primary" style="padding: 5px 10px;">✏️</a>
+                        <a href="/cars/delete/{{ car.id }}" class="btn btn-danger" style="padding: 5px 10px;" onclick="return confirm('هل أنت متأكد من الحذف؟')">🗑️</a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if not cars %}
+    <p style="color: #718096; text-align: center; padding: 20px;">لا توجد سيارات مسجلة بعد.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+
+{% block title %}إضافة رحلة - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>{% if edit_trip %}✏️ تعديل الرحلة{% else %}➕ إضافة رحلة جديدة{% endif %}</h2>
+    
+    <form method="POST" action="{% if edit_trip %}/trips/edit/{{ edit_trip.id }}{% else %}/add_trip{% endif %}">
+        
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>📅 التاريخ *</label>
+                <input type="date" name="trip_date" value="{{ edit_trip.trip_date if edit_trip else '' }}" required>
+            </div>
+            <div class="form-group">
+                <label>🚗 السيارة *</label>
+                <select name="car_id" required>
+                    <option value="">-- اختر السيارة --</option>
+                    {% for car in cars %}
+                    <option value="{{ car.id }}" {% if edit_trip and edit_trip.car_id == car.id %}selected{% endif %}>{{ car.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>👤 السائق *</label>
+                <select name="driver_id" required>
+                    <option value="">-- اختر السائق --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}" {% if edit_trip and edit_trip.driver_id == driver.id %}selected{% endif %}>{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>📍 بداية الانطلاق</label>
+                <input type="text" name="start_location" value="{{ edit_trip.start_location if edit_trip else '' }}" placeholder="مثال: المقر الرئيسي">
+            </div>
+            <div class="form-group">
+                <label>🎯 الوجهة</label>
+                <input type="text" name="destination" value="{{ edit_trip.destination if edit_trip else '' }}" placeholder="مثال: مطحنة دمشق">
+            </div>
+            <div class="form-group">
+                <label>🏷️ نوع الرحلة</label>
+                <select name="trip_type">
+                    <option value="">-- اختر نوع الرحلة --</option>
+                    <option value="الكشف على صوامع" {% if edit_trip and edit_trip.trip_type == 'الكشف على صوامع' %}selected{% endif %}>الكشف على صوامع</option>
+                    <option value="صيانة صومعة" {% if edit_trip and edit_trip.trip_type == 'صيانة صومعة' %}selected{% endif %}>صيانة صومعة</option>
+                    <option value="نقل عدة" {% if edit_trip and edit_trip.trip_type == 'نقل عدة' %}selected{% endif %}>نقل عدة</option>
+                    <option value="مهمة / أوراق / توصيل" {% if edit_trip and edit_trip.trip_type == 'مهمة / أوراق / توصيل' %}selected{% endif %}>مهمة / أوراق / توصيل</option>
+                    <option value="إيفاد مهندسين" {% if edit_trip and edit_trip.trip_type == 'إيفاد مهندسين' %}selected{% endif %}>إيفاد مهندسين</option>
+                    <option value="توصيل موظفين" {% if edit_trip and edit_trip.trip_type == 'توصيل موظفين' %}selected{% endif %}>توصيل موظفين</option>
+                    <option value="شراء مواد" {% if edit_trip and edit_trip.trip_type == 'شراء مواد' %}selected{% endif %}>شراء مواد</option>
+                    <option value="أخرى" {% if edit_trip and edit_trip.trip_type == 'أخرى' %}selected{% endif %}>أخرى</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>👨‍💼 طالب الرحلة</label>
+                <input type="text" name="requester" value="{{ edit_trip.requester if edit_trip else '' }}" placeholder="اسم الشخص أو القسم">
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <div style="height: 42px;"></div>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>🕐 وقت الخروج</label>
+                <input type="time" name="exit_time" value="{{ edit_trip.exit_time if edit_trip else '' }}">
+            </div>
+            <div class="form-group">
+                <label>🕐 وقت العودة</label>
+                <input type="time" name="return_time" value="{{ edit_trip.return_time if edit_trip else '' }}">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>🔢 عداد البداية (كم)</label>
+                <input type="number" step="0.1" name="start_km" value="{{ edit_trip.start_km if edit_trip else '' }}" placeholder="مثال: 45000">
+            </div>
+            <div class="form-group">
+                <label>🔢 عداد النهاية (كم)</label>
+                <input type="number" step="0.1" name="end_km" value="{{ edit_trip.end_km if edit_trip else '' }}" placeholder="مثال: 45120">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>📝 ملاحظات</label>
+            <textarea name="notes" rows="3" placeholder="أي ملاحظات إضافية...">{{ edit_trip.notes if edit_trip else '' }}</textarea>
+        </div>
+        
+        <button type="submit" class="btn btn-success">{% if edit_trip %}💾 حفظ التعديل{% else %}💾 حفظ الرحلة{% endif %}</button>
+        <a href="/" class="btn btn-secondary">إلغاء</a>
+    </form>
+</div>
+
+{% endblock %}

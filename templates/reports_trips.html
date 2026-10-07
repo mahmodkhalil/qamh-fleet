@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}تقرير الرحلات - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>📋 تقرير الرحلات</h2>
+    
+    <form method="GET" action="/reports/trips" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>🚗 السيارة</label>
+                <select name="car_id">
+                    <option value="">-- كل السيارات --</option>
+                    {% for car in cars %}
+                    <option value="{{ car.id }}" {% if car.id|string == selected_car %}selected{% endif %}>{{ car.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>👤 السائق</label>
+                <select name="driver_id">
+                    <option value="">-- كل السائقين --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}" {% if driver.id|string == selected_driver %}selected{% endif %}>{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <div style="display: flex; gap: 5px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">🔍 عرض</button>
+                    <a href="/reports/trips" class="btn btn-secondary">🔄</a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>📅 من تاريخ</label>
+                <input type="date" name="date_from" value="{{ date_from or '' }}">
+            </div>
+            <div class="form-group">
+                <label>📅 إلى تاريخ</label>
+                <input type="date" name="date_to" value="{{ date_to or '' }}">
+            </div>
+        </div>
+        
+        <a href="/reports/trips/export?car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}" class="btn btn-success">📥 تصدير Excel</a>
+    </form>
+</div>
+
+{% if has_filter and summary %}
+<div class="stats-grid">
+    <div class="stat-box">
+        <div class="number">{{ summary.total_trips }}</div>
+        <div class="label">📅 عدد الرحلات</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ "%.1f"|format(summary.total_km or 0) }}</div>
+        <div class="label">🛣️ إجمالي الكيلومترات</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ summary.by_car|length }}</div>
+        <div class="label">🚗 عدد السيارات</div>
+    </div>
+</div>
+
+{% if summary.by_car %}
+<div class="card">
+    <h2>📊 ملخص حسب السيارة</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>السيارة</th>
+                <th>عدد الرحلات</th>
+                <th>مجموع الكيلومترات</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for car_name, data in summary.by_car.items() %}
+            <tr>
+                <td><strong>{{ car_name }}</strong></td>
+                <td>{{ data.count }}</td>
+                <td>{{ "%.1f"|format(data.km or 0) }} كم</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if trips_by_car %}
+<div class="card">
+    <h2>📋 تفاصيل الرحلات</h2>
+    {% for car_name, car_trips in trips_by_car.items() %}
+    <div style="margin-bottom: 30px; padding: 15px; background: #f7fafc; border-radius: 8px; border-right: 4px solid #1e3a5f;">
+        <h3 style="color: #1e3a5f; margin-bottom: 12px; font-size: 17px;">
+            🚗 {{ car_name }}
+            <span style="font-size: 13px; font-weight: 400; color: #718096;">
+                ({{ car_trips|length }} رحلة)
+            </span>
+        </h3>
+        <div style="overflow-x: auto;">
+            <table style="background: white; font-size: 12px;">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>التاريخ</th>
+                        <th>السائق</th>
+                        <th>بداية الانطلاق</th>
+                        <th>الوجهة</th>
+                        <th>نوع الرحلة</th>
+                        <th>طالب الرحلة</th>
+                        <th>الخروج</th>
+                        <th>العودة</th>
+                        <th>عداد البداية</th>
+                        <th>عداد النهاية</th>
+                        <th>المسافة</th>
+                        <th style="background:#e9d8fd;color:#553c9a;">تكلفة/كم</th>
+                        <th style="background:#e9d8fd;color:#553c9a;">كلفة الرحلة (تقديري)</th>
+                        <th>ملاحظات</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% set total_km_car = namespace(value=0) %}
+                    {% set total_cost_car = namespace(value=0) %}
+                    {% for t in car_trips %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td>{{ t.trip_date }}</td>
+                        <td>{{ t.driver_name }}</td>
+                        <td>{{ t.start_location or '-' }}</td>
+                        <td>{{ t.destination or '-' }}</td>
+                        <td>{{ t.trip_type or '-' }}</td>
+                        <td>{{ t.requester or '-' }}</td>
+                        <td>{{ t.exit_time or '-' }}</td>
+                        <td>{{ t.return_time or '-' }}</td>
+                        <td>{{ t.start_km or '-' }}</td>
+                        <td>{{ t.end_km or '-' }}</td>
+                        <td>{{ t.distance or '-' }}</td>
+                        <td style="font-weight: 600; color: #553c9a;">
+                            {% if t.cost_per_km %}
+                            {{ "%.0f"|format(t.cost_per_km) }} *
+                            {% else %}-{% endif %}
+                        </td>
+                        <td style="font-weight: 700; color: #553c9a;">
+                            {% if t.trip_cost %}
+                            {{ "%.0f"|format(t.trip_cost) }} *
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>{{ t.notes or '-' }}</td>
+                    </tr>
+                    {% set total_km_car.value = total_km_car.value + (t.distance or 0) %}
+                    {% set total_cost_car.value = total_cost_car.value + (t.trip_cost or 0) %}
+                    {% endfor %}
+                    <tr style="background: #fef3c7; font-weight: 700; border-top: 3px solid #d69e2e;">
+                        <td colspan="11" style="text-align: center; padding: 12px; color: #744210;">📊 الإجمالي</td>
+                        <td style="padding: 12px; color: #744210;">{{ "%.1f"|format(total_km_car.value) }}</td>
+                        <td style="padding: 12px;">-</td>
+                        <td style="padding: 12px; color: #744210;">{{ "%.0f"|format(total_cost_car.value) }} *</td>
+                        <td style="padding: 12px;">-</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+    <p style="color: #553c9a; font-size: 12px; margin-top: 10px;">
+        * القيم تقديرية بناءً على متوسط تكلفة الكيلومتر للسيارة (اجمالي الوقود المدفوع ÷ اجمالي الكيلومترات)
+    </p>
+</div>
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد رحلات مطابقة للفلتر.</p>
+</div>
+{% endif %}
+
+{% elif not has_filter %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">👆 اختر السيارة أو الفترة الزمنية واضغط "عرض" لعرض التقرير.</p>
+</div>
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد نتائج مطابقة للفلتر.</p>
+</div>
+{% endif %}
+
+{% endblock %}

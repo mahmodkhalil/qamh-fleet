@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+{% block title %}السائقين - نظام حركة سيارات قمح{% endblock %}
+
+{% block content %}
+
+<style>
+    .driver-row { cursor: pointer; transition: background 0.2s; }
+    .driver-row:hover { background: #ebf4ff !important; }
+    .driver-row.expanded { background: #dbeafe !important; }
+    .expand-btn {
+        background: #1e3a5f;
+        color: white;
+        border: none;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: transform 0.3s;
+    }
+    .expand-btn.open { transform: rotate(180deg); }
+    .details-row { display: none; background: #f8fafc; }
+    .details-row.show { display: table-row; }
+    .details-cell { padding: 0 !important; }
+    .details-inner {
+        padding: 20px;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+    @media (max-width: 900px) {
+        .details-inner { grid-template-columns: 1fr; }
+    }
+    .details-box {
+        background: white;
+        border-radius: 10px;
+        padding: 15px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        border-top: 3px solid #1e3a5f;
+    }
+    .details-box.overtime-box { border-top-color: #d69e2e; }
+    .details-box h4 {
+        color: #1e3a5f;
+        margin-bottom: 12px;
+        font-size: 15px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .details-box.overtime-box h4 { color: #b7791f; }
+    .details-box table { margin-top: 0; font-size: 13px; }
+    .details-box th { font-size: 12px; padding: 8px; }
+    .details-box td { padding: 8px; font-size: 12px; }
+    .no-data {
+        text-align: center;
+        color: #a0aec0;
+        padding: 20px;
+        font-size: 13px;
+    }
+    .count-badge {
+        background: #1e3a5f;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 10px;
+        font-size: 11px;
+    }
+    .count-badge.gold { background: #d69e2e; }
+    .count-badge.blue { background: #2c5282; }
+    .total-badge {
+        color: white;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .total-badge.morning { background: #2c5282; }
+    .total-badge.evening { background: #b7791f; }
+    .modal-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 2000;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+        background: white;
+        border-radius: 12px;
+        padding: 25px;
+        max-width: 500px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal h3 { color: #1e3a5f; margin-bottom: 20px; }
+    .modal .actions { display: flex; gap: 10px; margin-top: 20px; }
+    .modal .actions .btn { flex: 1; text-align: center; }
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 15px;
+    }
+    .section-header h2 {
+        border: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+</style>
+
+<div class="card">
+    <div class="section-header">
+        <h2>👤 قائمة السائقين</h2>
+        {% if is_admin %}
+        <button onclick="openAddDriver()" class="btn btn-success">➕ إضافة سائق</button>
+        {% endif %}
+    </div>
+
+    {% if drivers %}
+    <table>
+        <thead>
+            <tr>
+                <th style="width:40px;"></th>
+                <th>#</th>
+                <th>الاسم</th>
+                <th>الهاتف</th>
+                <th>ملاحظات</th>
+                <th style="text-align:center;">مهمات السفر</th>
+                <th style="text-align:center;">صباحي</th>
+                <th style="text-align:center;">مسائي</th>
+                {% if is_admin %}<th style="text-align:center;">إجراءات</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in drivers %}
+            {% set missions = missions_by_driver.get(d['id'], []) %}
+            {% set overtimes = overtime_by_driver.get(d['id'], []) %}
+            {% set travel_count = missions | selectattr('is_travel', 'equalto', 1) | list | length %}
+            {% set total_morning = overtimes | sum(attribute='morning_hours') %}
+            {% set total_evening = overtimes | sum(attribute='evening_hours') %}
+            <tr class="driver-row" onclick="toggleDriver({{ d['id'] }})">
+                <td>
+                    <button class="expand-btn" id="btn-{{ d['id'] }}">▼</button>
+                </td>
+                <td>{{ d['id'] }}</td>
+                <td><strong>{{ d['name'] }}</strong></td>
+                <td>{{ d['phone'] or '—' }}</td>
+                <td>{{ d['notes'] or '—' }}</td>
+                <td style="text-align:center;">
+                    <span class="count-badge">{{ travel_count }}</span>
+                </td>
+                <td style="text-align:center;">
+                    <span class="count-badge blue">{{ "%.1f"|format(total_morning or 0) }} س</span>
+                </td>
+                <td style="text-align:center;">
+                    <span class="count-badge gold">{{ "%.1f"|format(total_evening or 0) }} س</span>
+                </td>
+                {% if is_admin %}
+                <td style="text-align:center;" onclick="event.stopPropagation();">
+                    <a href="/drivers/edit/{{ d['id'] }}" class="btn btn-warning" style="padding:5px 10px;font-size:12px;">✏️</a>
+                    <a href="/drivers/delete/{{ d['id'] }}" class="btn btn-danger" style="padding:5px 10px;font-size:12px;" onclick="return confirm('تأكيد الحذف؟')">🗑️</a>
+                </td>
+                {% endif %}
+            </tr>
+
+            <tr class="details-row" id="details-{{ d['id'] }}">
+                <td colspan="{% if is_admin %}9{% else %}8{% endif %}" class="details-cell">
+                    <div class="details-inner">
+
+                        <div class="details-box">
+                            <h4>
+                                <span>📋 مهمات السفر</span>
+                                {% if is_admin %}
+                                <button onclick="event.stopPropagation(); openAddMission({{ d['id'] }}, '{{ d['name'] }}')" class="btn btn-success" style="padding:4px 10px;font-size:12px;">➕ إضافة</button>
+                                {% endif %}
+                            </h4>
+                            {% if missions %}
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>التاريخ</th>
+                                        <th>الوصف</th>
+                                        <th>المسافة</th>
+                                        <th>سفر؟</th>
+                                        {% if is_admin %}<th></th>{% endif %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for m in missions %}
+                                    <tr>
+                                        <td>{{ m['date'] }}</td>
+                                        <td>{{ m['description'] or '—' }}</td>
+                                        <td>{{ m['distance_km'] or 0 }} كم</td>
+                                        <td>
+                                            {% if m['is_travel'] == 1 %}
+                                            <span class="badge" style="background:#38a169;color:white;">نعم</span>
+                                            {% else %}
+                                            <span class="badge" style="background:#e2e8f0;color:#4a5568;">لا</span>
+                                            {% endif %}
+                                        </td>
+                                        {% if is_admin %}
+                                        <td>
+                                            <a href="/travel_missions/delete/{{ m['id'] }}" class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="event.stopPropagation(); return confirm('حذف المهمة؟')">🗑️</a>
+                                        </td>
+                                        {% endif %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            {% else %}
+                            <div class="no-data">لا يوجد مهمات سفر لهذا السائق</div>
+                            {% endif %}
+                        </div>
+
+                        <div class="details-box overtime-box">
+                            <h4>
+                                <span>⏰ الإضافي</span>
+                                {% if is_admin %}
+                                <button onclick="event.stopPropagation(); openAddOvertime({{ d['id'] }}, '{{ d['name'] }}')" class="btn btn-warning" style="padding:4px 10px;font-size:12px;">➕ إضافة</button>
+                                {% endif %}
+                            </h4>
+                            {% if overtimes %}
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>التاريخ</th>
+                                        <th>صباحي</th>
+                                        <th>مسائي</th>
+                                        {% if is_admin %}<th></th>{% endif %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for o in overtimes %}
+                                    <tr>
+                                        <td>{{ o['date'] }}</td>
+                                        <td>{{ o['morning_hours'] or 0 }} س</td>
+                                        <td>{{ o['evening_hours'] or 0 }} س</td>
+                                        {% if is_admin %}
+                                        <td>
+                                            <a href="/overtime/delete/{{ o['id'] }}" class="btn btn-danger" style="padding:3px 8px;font-size:11px;" onclick="event.stopPropagation(); return confirm('حذف الإضافي؟')">🗑️</a>
+                                        </td>
+                                        {% endif %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <div style="margin-top:10px;text-align:left;display:flex;gap:8px;flex-wrap:wrap;">
+                                <span class="total-badge morning">صباحي: {{ "%.1f"|format(total_morning or 0) }} ساعة</span>
+                                <span class="total-badge evening">مسائي: {{ "%.1f"|format(total_evening or 0) }} ساعة</span>
+                            </div>
+                            {% else %}
+                            <div class="no-data">لا يوجد إضافي لهذا السائق</div>
+                            {% endif %}
+                        </div>
+
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="no-data">لا يوجد سائقين مسجلين</div>
+    {% endif %}
+</div>
+
+<!-- Modal إضافة سائق -->
+<div class="modal-overlay" id="addDriverModal">
+    <div class="modal">
+        <h3>➕ إضافة سائق جديد</h3>
+        <form method="POST" action="/drivers/add">
+            <div class="form-group">
+                <label>الاسم *</label>
+                <input type="text" name="name" required>
+            </div>
+            <div class="form-group">
+                <label>الهاتف</label>
+                <input type="text" name="phone">
+            </div>
+            <div class="form-group">
+                <label>ملاحظات</label>
+                <textarea name="notes" rows="2"></textarea>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-success">حفظ</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addDriverModal')">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal إضافة مهمة سفر -->
+<div class="modal-overlay" id="addMissionModal">
+    <div class="modal">
+        <h3>📋 إضافة مهمة سفر — <span id="missionDriverName"></span></h3>
+        <form method="POST" action="/travel_missions/add">
+            <input type="hidden" name="driver_id" id="missionDriverId">
+            <div class="form-group">
+                <label>التاريخ *</label>
+                <input type="date" name="date" required>
+            </div>
+            <div class="form-group">
+                <label>الوصف</label>
+                <input type="text" name="description" placeholder="مثال: دمشق - حلب">
+            </div>
+            <div class="form-group">
+                <label>المسافة (كم)</label>
+                <input type="number" name="distance_km" step="0.1" value="0">
+                <small style="color:#718096;font-size:12px;">إذا كانت 75 كم أو أكثر تُحسب مهمة سفر</small>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>وقت الذهاب</label>
+                    <input type="time" name="departure_time">
+                </div>
+                <div class="form-group">
+                    <label>وقت العودة</label>
+                    <input type="time" name="return_time">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>ملاحظات</label>
+                <textarea name="notes" rows="2"></textarea>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-success">حفظ</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addMissionModal')">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal إضافة إضافي -->
+<div class="modal-overlay" id="addOvertimeModal">
+    <div class="modal">
+        <h3>⏰ إضافة إضافي — <span id="overtimeDriverName"></span></h3>
+        <form method="POST" action="/overtime/add">
+            <input type="hidden" name="driver_id" id="overtimeDriverId">
+            <div class="form-group">
+                <label>التاريخ *</label>
+                <input type="date" name="date" required>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>ساعات صباحية</label>
+                    <input type="number" name="morning_hours" step="0.5" value="0">
+                </div>
+                <div class="form-group">
+                    <label>ساعات مسائية</label>
+                    <input type="number" name="evening_hours" step="0.5" value="0">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>ملاحظات</label>
+                <textarea name="notes" rows="2"></textarea>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-warning">حفظ</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal('addOvertimeModal')">إلغاء</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function toggleDriver(id) {
+    const details = document.getElementById('details-' + id);
+    const btn = document.getElementById('btn-' + id);
+    const row = btn.closest('tr');
+    
+    if (details.classList.contains('show')) {
+        details.classList.remove('show');
+        btn.classList.remove('open');
+        row.classList.remove('expanded');
+    } else {
+        details.classList.add('show');
+        btn.classList.add('open');
+        row.classList.add('expanded');
+    }
+}
+
+function openAddDriver() {
+    document.getElementById('addDriverModal').classList.add('show');
+}
+
+function openAddMission(driverId, driverName) {
+    document.getElementById('missionDriverId').value = driverId;
+    document.getElementById('missionDriverName').textContent = driverName;
+    document.getElementById('addMissionModal').classList.add('show');
+}
+
+function openAddOvertime(driverId, driverName) {
+    document.getElementById('overtimeDriverId').value = driverId;
+    document.getElementById('overtimeDriverName').textContent = driverName;
+    document.getElementById('addOvertimeModal').classList.add('show');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.remove('show');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', function(e) {
+        if (e.target === this) {
+            this.classList.remove('show');
+        }
+    });
+});
+</script>
+
+{% endblock %}

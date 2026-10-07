@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}تقرير الصيانة - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>🔧 تقرير الصيانة</h2>
+    
+    <form method="GET" action="/reports/maintenance" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>🚗 السيارة</label>
+                <select name="car_id">
+                    <option value="">-- كل السيارات --</option>
+                    {% for car in cars %}
+                    <option value="{{ car.id }}" {% if car.id|string == selected_car %}selected{% endif %}>{{ car.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>🔧 نوع الصيانة</label>
+                <select name="type">
+                    <option value="">-- كل الأنواع --</option>
+                    <optgroup label="دورية">
+                        <option value="تغيير زيت فقط" {% if selected_type == 'تغيير زيت فقط' %}selected{% endif %}>تغيير زيت فقط</option>
+                        <option value="تغيير فلتر زيت" {% if selected_type == 'تغيير فلتر زيت' %}selected{% endif %}>تغيير فلتر زيت</option>
+                        <option value="تغيير زيت + فلتر زيت" {% if selected_type == 'تغيير زيت + فلتر زيت' %}selected{% endif %}>تغيير زيت + فلتر زيت</option>
+                        <option value="تغيير فلتر هواء" {% if selected_type == 'تغيير فلتر هواء' %}selected{% endif %}>تغيير فلتر هواء</option>
+                        <option value="تغيير فلتر بنزين" {% if selected_type == 'تغيير فلتر بنزين' %}selected{% endif %}>تغيير فلتر بنزين</option>
+                        <option value="تغيير فلتر مكيف" {% if selected_type == 'تغيير فلتر مكيف' %}selected{% endif %}>تغيير فلتر مكيف</option>
+                        <option value="صيانة كاملة (زيت + كل المصافي)" {% if selected_type == 'صيانة كاملة (زيت + كل المصافي)' %}selected{% endif %}>صيانة كاملة</option>
+                    </optgroup>
+                    <optgroup label="أخرى">
+                        <option value="إطارات" {% if selected_type == 'إطارات' %}selected{% endif %}>إطارات</option>
+                        <option value="بطارية" {% if selected_type == 'بطارية' %}selected{% endif %}>بطارية</option>
+                        <option value="فرامل" {% if selected_type == 'فرامل' %}selected{% endif %}>فرامل</option>
+                        <option value="كهرباء" {% if selected_type == 'كهرباء' %}selected{% endif %}>كهرباء</option>
+                        <option value="ميكانيك" {% if selected_type == 'ميكانيك' %}selected{% endif %}>ميكانيك</option>
+                        <option value="تكييف" {% if selected_type == 'تكييف' %}selected{% endif %}>تكييف</option>
+                        <option value="أخرى" {% if selected_type == 'أخرى' %}selected{% endif %}>أخرى</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>📁 الفئة</label>
+                <select name="category">
+                    <option value="">-- الكل --</option>
+                    <option value="دورية" {% if selected_category == 'دورية' %}selected{% endif %}>دورية</option>
+                    <option value="أخرى" {% if selected_category == 'أخرى' %}selected{% endif %}>أخرى</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>📅 من تاريخ</label>
+                <input type="date" name="date_from" value="{{ date_from or '' }}">
+            </div>
+            <div class="form-group">
+                <label>📅 إلى تاريخ</label>
+                <input type="date" name="date_to" value="{{ date_to or '' }}">
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <div style="display: flex; gap: 5px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">🔍 عرض</button>
+                    <a href="/reports/maintenance" class="btn btn-secondary">🔄</a>
+                </div>
+            </div>
+        </div>
+        
+        <a href="/reports/maintenance/export?car_id={{ selected_car or '' }}&type={{ selected_type or '' }}&category={{ selected_category or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}" class="btn btn-success">📥 تصدير Excel</a>
+    </form>
+</div>
+
+{% if has_filter and summary %}
+<div class="stats-grid">
+    <div class="stat-box">
+        <div class="number">{{ summary.total_records }}</div>
+        <div class="label">🔧 عدد الصيانات</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ "%.0f"|format(summary.total_cost or 0) }}</div>
+        <div class="label">💰 إجمالي التكلفة</div>
+    </div>
+    <div class="stat-box">
+        <div class="number">{{ summary.by_car|length }}</div>
+        <div class="label">🚗 عدد السيارات</div>
+    </div>
+</div>
+
+{% if summary.by_car %}
+<div class="card">
+    <h2>📊 ملخص حسب السيارة</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>السيارة</th>
+                <th>عدد الصيانات</th>
+                <th>إجمالي التكلفة</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for car_name, data in summary.by_car.items() %}
+            <tr>
+                <td><strong>{{ car_name }}</strong></td>
+                <td>{{ data.count }}</td>
+                <td>{{ "%.0f"|format(data.cost or 0) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if summary.by_category %}
+<div class="card">
+    <h2>📁 ملخص حسب الفئة</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>الفئة</th>
+                <th>عدد الصيانات</th>
+                <th>إجمالي التكلفة</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for cat, data in summary.by_category.items() %}
+            <tr>
+                <td>
+                    {% if cat == 'دورية' %}
+                    <span class="badge" style="background:#bee3f8;color:#2c5282;">{{ cat }}</span>
+                    {% else %}
+                    <span class="badge" style="background:#e9d8fd;color:#553c9a;">{{ cat }}</span>
+                    {% endif %}
+                </td>
+                <td>{{ data.count }}</td>
+                <td>{{ "%.0f"|format(data.cost or 0) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+{% if records %}
+<div class="card">
+    <h2>📋 تفاصيل الصيانات ({{ records|length }} صيانة)</h2>
+    <div style="overflow-x: auto;">
+        <table style="font-size: 12px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>التاريخ</th>
+                    <th>السيارة</th>
+                    <th>النوع</th>
+                    <th>الفئة</th>
+                    <th>العداد</th>
+                    <th>التكلفة</th>
+                    <th>رقم الفاتورة</th>
+                    <th>الورشة</th>
+                    <th>الصيانة القادمة</th>
+                    <th>الفاتورة</th>
+                    <th>ملاحظات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in records %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ m.date }}</td>
+                    <td>{{ m.car_name }}</td>
+                    <td>{{ m.type }}</td>
+                    <td>
+                        {% if m.category == 'دورية' %}
+                        <span class="badge" style="background:#bee3f8;color:#2c5282;">دورية</span>
+                        {% else %}
+                        <span class="badge" style="background:#e9d8fd;color:#553c9a;">{{ m.category or 'أخرى' }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ m.km_at_service or '-' }}</td>
+                    <td style="font-weight: 600; color: #1e3a5f;">{{ m.cost or '-' }}</td>
+                    <td>{{ m.invoice_number or '-' }}</td>
+                    <td>{{ m.workshop or '-' }}</td>
+                    <td>
+                        {% if m.next_service_km %}{{ m.next_service_km }} كم{% else %}-{% endif %}
+                    </td>
+                    <td>
+                        {% if m.invoice_image %}
+                        <a href="/uploads/{{ m.invoice_image }}" target="_blank">📷 عرض</a>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ m.notes or '-' }}</td>
+                </tr>
+                {% endfor %}
+                <tr style="background: #fef3c7; font-weight: 700; border-top: 3px solid #d69e2e;">
+                    <td colspan="6" style="text-align: center; padding: 15px; color: #744210; font-size: 16px;">📊 الإجمالي</td>
+                    <td style="padding: 15px; color: #744210; font-size: 16px;">{{ "%.0f"|format(summary.total_cost or 0) }}</td>
+                    <td colspan="5" style="padding: 15px;">-</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد صيانات مطابقة للفلتر.</p>
+</div>
+{% endif %}
+
+{% elif not has_filter %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">👆 اختر السيارة أو الفترة الزمنية واضغط "عرض" لعرض التقرير.</p>
+</div>
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد نتائج مطابقة للفلتر.</p>
+</div>
+{% endif %}
+
+{% endblock %}

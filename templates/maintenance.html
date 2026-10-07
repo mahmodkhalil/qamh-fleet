@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}الصيانة - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>🔧 إدارة الصيانة</h2>
+    
+    {% if is_admin and edit_maintenance %}
+    <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 25px; border-right: 4px solid #f6ad55;">
+        <h3 style="margin-bottom: 15px; color: #744210;">✏️ تعديل الصيانة</h3>
+        <form method="POST" action="/maintenance/edit/{{ edit_maintenance.id }}" enctype="multipart/form-data">
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label>📅 التاريخ *</label>
+                    <input type="date" name="date" value="{{ edit_maintenance.date }}" required>
+                </div>
+                <div class="form-group">
+                    <label>🚗 السيارة *</label>
+                    <select name="car_id" required>
+                        <option value="">-- اختر --</option>
+                        {% for car in cars %}
+                        <option value="{{ car.id }}" {% if edit_maintenance.car_id == car.id %}selected{% endif %}>{{ car.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>🔧 نوع الصيانة *</label>
+                    <select name="type" required>
+                        <option value="">-- اختر --</option>
+                        <optgroup label="دورية (زيوت ومصافي)">
+                            <option value="تغيير زيت فقط" {% if edit_maintenance.type == 'تغيير زيت فقط' %}selected{% endif %}>تغيير زيت فقط</option>
+                            <option value="تغيير فلتر زيت" {% if edit_maintenance.type == 'تغيير فلتر زيت' %}selected{% endif %}>تغيير فلتر زيت</option>
+                            <option value="تغيير زيت + فلتر زيت" {% if edit_maintenance.type == 'تغيير زيت + فلتر زيت' %}selected{% endif %}>تغيير زيت + فلتر زيت</option>
+                            <option value="تغيير فلتر هواء" {% if edit_maintenance.type == 'تغيير فلتر هواء' %}selected{% endif %}>تغيير فلتر هواء</option>
+                            <option value="تغيير فلتر بنزين" {% if edit_maintenance.type == 'تغيير فلتر بنزين' %}selected{% endif %}>تغيير فلتر بنزين</option>
+                            <option value="تغيير فلتر مكيف" {% if edit_maintenance.type == 'تغيير فلتر مكيف' %}selected{% endif %}>تغيير فلتر مكيف</option>
+                            <option value="صيانة كاملة (زيت + كل المصافي)" {% if edit_maintenance.type == 'صيانة كاملة (زيت + كل المصافي)' %}selected{% endif %}>صيانة كاملة (زيت + كل المصافي)</option>
+                        </optgroup>
+                        <optgroup label="صيانات أخرى">
+                            <option value="إطارات" {% if edit_maintenance.type == 'إطارات' %}selected{% endif %}>إطارات</option>
+                            <option value="بطارية" {% if edit_maintenance.type == 'بطارية' %}selected{% endif %}>بطارية</option>
+                            <option value="فرامل" {% if edit_maintenance.type == 'فرامل' %}selected{% endif %}>فرامل</option>
+                            <option value="كهرباء" {% if edit_maintenance.type == 'كهرباء' %}selected{% endif %}>كهرباء</option>
+                            <option value="ميكانيك" {% if edit_maintenance.type == 'ميكانيك' %}selected{% endif %}>ميكانيك</option>
+                            <option value="تكييف" {% if edit_maintenance.type == 'تكييف' %}selected{% endif %}>تكييف</option>
+                            <option value="أخرى" {% if edit_maintenance.type == 'أخرى' %}selected{% endif %}>أخرى</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>الفئة</label>
+                    <select name="category">
+                        <option value="دورية" {% if edit_maintenance.category == 'دورية' %}selected{% endif %}>دورية</option>
+                        <option value="أخرى" {% if edit_maintenance.category == 'أخرى' %}selected{% endif %}>أخرى</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>🔢 العداد عند الصيانة (كم)</label>
+                    <input type="number" step="0.1" name="km_at_service" value="{{ edit_maintenance.km_at_service or '' }}">
+                </div>
+            </div>
+            
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label>💰 التكلفة</label>
+                    <input type="number" step="0.01" name="cost" value="{{ edit_maintenance.cost or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>🧾 رقم الفاتورة</label>
+                    <input type="text" name="invoice_number" value="{{ edit_maintenance.invoice_number or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>🏪 الورشة / المكان</label>
+                    <input type="text" name="workshop" value="{{ edit_maintenance.workshop or '' }}">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>⏰ العداد للصيانة القادمة (كم)</label>
+                    <input type="number" step="0.1" name="next_service_km" value="{{ edit_maintenance.next_service_km or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>📅 تاريخ الصيانة القادمة</label>
+                    <input type="date" name="next_service_date" value="{{ edit_maintenance.next_service_date or '' }}">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>📷 صورة الفاتورة (اختياري)</label>
+                    <input type="file" name="invoice_image" accept="image/*,.pdf">
+                    {% if edit_maintenance.invoice_image %}
+                    <p style="margin-top: 5px; font-size: 12px;">
+                        <a href="/uploads/{{ edit_maintenance.invoice_image }}" target="_blank">📎 عرض الصورة الحالية</a>
+                    </p>
+                    {% endif %}
+                </div>
+                <div class="form-group">
+                    <label>📝 ملاحظات</label>
+                    <input type="text" name="notes" value="{{ edit_maintenance.notes or '' }}">
+                </div>
+            </div>
+            
+            <button type="submit" class="btn btn-success">💾 حفظ التعديل</button>
+            <a href="/maintenance" class="btn btn-secondary">إلغاء</a>
+        </form>
+    </div>
+    {% endif %}
+    
+    {% if is_admin and not edit_maintenance %}
+    <form method="POST" action="/maintenance/add" enctype="multipart/form-data" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <h3 style="margin-bottom: 15px; color: #1e3a5f;">➕ إضافة صيانة جديدة</h3>
+        
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>📅 التاريخ *</label>
+                <input type="date" name="date" required>
+            </div>
+            <div class="form-group">
+                <label>🚗 السيارة *</label>
+                <select name="car_id" required>
+                    <option value="">-- اختر --</option>
+                    {% for car in cars %}
+                    <option value="{{ car.id }}">{{ car.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>🔧 نوع الصيانة *</label>
+                <select name="type" required>
+                    <option value="">-- اختر --</option>
+                    <optgroup label="دورية (زيوت ومصافي)">
+                        <option value="تغيير زيت فقط">تغيير زيت فقط</option>
+                        <option value="تغيير فلتر زيت">تغيير فلتر زيت</option>
+                        <option value="تغيير زيت + فلتر زيت">تغيير زيت + فلتر زيت</option>
+                        <option value="تغيير فلتر هواء">تغيير فلتر هواء</option>
+                        <option value="تغيير فلتر بنزين">تغيير فلتر بنزين</option>
+                        <option value="تغيير فلتر مكيف">تغيير فلتر مكيف</option>
+                        <option value="صيانة كاملة (زيت + كل المصافي)">صيانة كاملة (زيت + كل المصافي)</option>
+                    </optgroup>
+                    <optgroup label="صيانات أخرى">
+                        <option value="إطارات">إطارات</option>
+                        <option value="بطارية">بطارية</option>
+                        <option value="فرامل">فرامل</option>
+                        <option value="كهرباء">كهرباء</option>
+                        <option value="ميكانيك">ميكانيك</option>
+                        <option value="تكييف">تكييف</option>
+                        <option value="أخرى">أخرى</option>
+                    </optgroup>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>الفئة</label>
+                <select name="category">
+                    <option value="دورية">دورية</option>
+                    <option value="أخرى">أخرى</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>🔢 العداد عند الصيانة (كم)</label>
+                <input type="number" step="0.1" name="km_at_service">
+            </div>
+        </div>
+        
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>💰 التكلفة</label>
+                <input type="number" step="0.01" name="cost">
+            </div>
+            <div class="form-group">
+                <label>🧾 رقم الفاتورة</label>
+                <input type="text" name="invoice_number">
+            </div>
+            <div class="form-group">
+                <label>🏪 الورشة / المكان</label>
+                <input type="text" name="workshop">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>⏰ العداد للصيانة القادمة (كم)</label>
+                <input type="number" step="0.1" name="next_service_km">
+            </div>
+            <div class="form-group">
+                <label>📅 تاريخ الصيانة القادمة</label>
+                <input type="date" name="next_service_date">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>📷 صورة الفاتورة (اختياري)</label>
+                <input type="file" name="invoice_image" accept="image/*,.pdf">
+            </div>
+            <div class="form-group">
+                <label>📝 ملاحظات</label>
+                <input type="text" name="notes">
+            </div>
+        </div>
+        
+        <button type="submit" class="btn btn-success">💾 حفظ الصيانة</button>
+    </form>
+    {% endif %}
+    
+    <h3 style="margin-bottom: 15px; color: #1e3a5f;">📋 سجل الصيانات</h3>
+    <div style="overflow-x: auto;">
+        <table style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>التاريخ</th>
+                    <th>السيارة</th>
+                    <th>النوع</th>
+                    <th>الفئة</th>
+                    <th>العداد</th>
+                    <th>التكلفة</th>
+                    <th>الفاتورة</th>
+                    <th>الصيانة القادمة</th>
+                    {% if is_admin %}<th>إجراءات</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in records %}
+                <tr>
+                    <td>{{ m.date }}</td>
+                    <td>{{ m.car_name }}</td>
+                    <td>{{ m.type }}</td>
+                    <td>
+                        {% if m.category == 'دورية' %}
+                        <span class="badge" style="background:#bee3f8;color:#2c5282;">دورية</span>
+                        {% else %}
+                        <span class="badge" style="background:#e9d8fd;color:#553c9a;">أخرى</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ m.km_at_service or '-' }}</td>
+                    <td style="font-weight:600;color:#1e3a5f;">{{ m.cost or '-' }}</td>
+                    <td>
+                        {% if m.invoice_number %}{{ m.invoice_number }}<br>{% endif %}
+                        {% if m.invoice_image %}
+                        <a href="/uploads/{{ m.invoice_image }}" target="_blank" style="font-size:12px;">📷 عرض</a>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if m.next_service_km %}{{ m.next_service_km }} كم{% else %}-{% endif %}
+                    </td>
+                    {% if is_admin %}
+                    <td>
+                        <a href="/maintenance/edit/{{ m.id }}" class="btn btn-primary" style="padding: 5px 10px;">✏️</a>
+                        <a href="/maintenance/delete/{{ m.id }}" class="btn btn-danger" style="padding: 5px 10px;" onclick="return confirm('هل أنت متأكد من الحذف؟')">🗑️</a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if not records %}
+    <p style="color: #718096; text-align: center; padding: 20px;">لا توجد صيانات مسجلة بعد.</p>
+    {% endif %}
+</div>
+
+{% endblock %}

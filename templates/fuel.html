@@ -1,0 +1,315 @@
+{% extends "base.html" %}
+
+{% block title %}الوقود - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>⛽ إدارة تعبئات الوقود</h2>
+    
+    {% if is_admin and edit_fuel %}
+    <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-right: 4px solid #f6ad55;">
+        <h3 style="margin-bottom: 15px; color: #744210;">✏️ تعديل تعبئة</h3>
+        <form method="POST" action="/fuel/edit/{{ edit_fuel.id }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>📅 التاريخ *</label>
+                    <input type="date" name="fuel_date" value="{{ edit_fuel.fuel_date }}" required>
+                </div>
+                <div class="form-group">
+                    <label>🚗 السيارة *</label>
+                    <select name="car_id" required>
+                        <option value="">-- اختر --</option>
+                        {% for car in cars %}
+                        <option value="{{ car.id }}" {% if edit_fuel.car_id == car.id %}selected{% endif %}>{{ car.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row-3">
+                <div class="form-group">
+                    <label>⛽ نوع الوقود *</label>
+                    <select name="fuel_type" required>
+                        <option value="">-- اختر --</option>
+                        <option value="بنزين" {% if edit_fuel.fuel_type == 'بنزين' %}selected{% endif %}>بنزين</option>
+                        <option value="ديزل" {% if edit_fuel.fuel_type == 'ديزل' %}selected{% endif %}>ديزل</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>🏪 المصدر *</label>
+                    <select name="source" id="edit_source" required onchange="toggleEditPayment()">
+                        <option value="">-- اختر --</option>
+                        <option value="خزان الشركة" {% if edit_fuel.source == 'خزان الشركة' %}selected{% endif %}>خزان الشركة</option>
+                        <option value="كازية" {% if edit_fuel.source == 'كازية' %}selected{% endif %}>كازية</option>
+                    </select>
+                </div>
+                <div class="form-group" id="edit_payment_field" style="{% if edit_fuel.source != 'كازية' %}display: none;{% endif %}">
+                    <label>💳 حالة الدفع</label>
+                    <select name="payment_status">
+                        <option value="">-- اختر --</option>
+                        <option value="مدفوعة من قسم الحركة" {% if edit_fuel.payment_status == 'مدفوعة من قسم الحركة' %}selected{% endif %}>مدفوعة من قسم الحركة</option>
+                        <option value="مدفوعة من إدارة المشروع" {% if edit_fuel.payment_status == 'مدفوعة من إدارة المشروع' %}selected{% endif %}>مدفوعة من إدارة المشروع</option>
+                        <option value="مدفوعة من جهة أخرى" {% if edit_fuel.payment_status == 'مدفوعة من جهة أخرى' %}selected{% endif %}>مدفوعة من جهة أخرى</option>
+                        <option value="اشتراك شركة البوابة الذهبية" {% if edit_fuel.payment_status == 'اشتراك شركة البوابة الذهبية' %}selected{% endif %}>اشتراك شركة البوابة الذهبية</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>👤 السائق (اختياري)</label>
+                    <select name="driver_id">
+                        <option value="">-- اختر --</option>
+                        {% for driver in drivers %}
+                        <option value="{{ driver.id }}" {% if edit_fuel.driver_id == driver.id %}selected{% endif %}>{{ driver.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>🔢 العداد عند التعبئة (كم) *</label>
+                    <input type="number" step="0.1" name="km_at_fill" value="{{ edit_fuel.km_at_fill or '' }}" required>
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>💧 عدد اللترات</label>
+                    <input type="number" step="0.01" name="liters" value="{{ edit_fuel.liters or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>💰 سعر اللتر</label>
+                    <input type="number" step="0.01" name="price_per_liter" value="{{ edit_fuel.price_per_liter or '' }}">
+                </div>
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label>💵 التكلفة الإجمالية (تلقائي)</label>
+                    <input type="number" step="0.01" name="total_cost" value="{{ edit_fuel.total_cost or '' }}" readonly style="background: #edf2f7;">
+                </div>
+                <div class="form-group">
+                    <label>💲 الكلفة النهائية (يدوي - لقسم الحركة فقط)</label>
+                    <input type="number" step="0.01" name="final_cost" value="{{ edit_fuel.final_cost or '' }}" style="background: #fefcbf; font-weight: 600;">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>📝 ملاحظات</label>
+                <textarea name="notes" rows="2">{{ edit_fuel.notes or '' }}</textarea>
+            </div>
+            
+            <button type="submit" class="btn btn-success">💾 حفظ التعديل</button>
+            <a href="/fuel" class="btn btn-secondary">إلغاء</a>
+        </form>
+    </div>
+    {% endif %}
+    
+    {% if is_admin and not edit_fuel %}
+    <form method="POST" action="/fuel/add" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <h3 style="margin-bottom: 15px; color: #1e3a5f;">➕ تسجيل تعبئة جديدة</h3>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>📅 التاريخ *</label>
+                <input type="date" name="fuel_date" required>
+            </div>
+            <div class="form-group">
+                <label>🚗 السيارة *</label>
+                <select name="car_id" required>
+                    <option value="">-- اختر السيارة --</option>
+                    {% for car in cars %}
+                    <option value="{{ car.id }}">{{ car.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>⛽ نوع الوقود *</label>
+                <select name="fuel_type" required>
+                    <option value="">-- اختر --</option>
+                    <option value="بنزين">بنزين</option>
+                    <option value="ديزل">ديزل</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>🏪 المصدر *</label>
+                <select name="source" id="add_source" required onchange="toggleAddPayment()">
+                    <option value="">-- اختر --</option>
+                    <option value="خزان الشركة">خزان الشركة</option>
+                    <option value="كازية">كازية</option>
+                </select>
+            </div>
+            <div class="form-group" id="add_payment_field" style="display: none;">
+                <label>💳 حالة الدفع</label>
+                <select name="payment_status">
+                    <option value="">-- اختر --</option>
+                    <option value="مدفوعة من قسم الحركة">مدفوعة من قسم الحركة</option>
+                    <option value="مدفوعة من إدارة المشروع">مدفوعة من إدارة المشروع</option>
+                    <option value="مدفوعة من جهة أخرى">مدفوعة من جهة أخرى</option>
+                    <option value="اشتراك شركة البوابة الذهبية">اشتراك شركة البوابة الذهبية</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>👤 السائق (اختياري)</label>
+                <select name="driver_id">
+                    <option value="">-- اختر السائق --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}">{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>🔢 العداد عند التعبئة (كم) *</label>
+                <input type="number" step="0.1" name="km_at_fill" required>
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>💧 عدد اللترات</label>
+                <input type="number" step="0.01" name="liters" id="liters" oninput="calculateTotal()">
+            </div>
+            <div class="form-group">
+                <label>💰 سعر اللتر</label>
+                <input type="number" step="0.01" name="price_per_liter" id="price" oninput="calculateTotal()">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>💵 التكلفة الإجمالية (تلقائي)</label>
+                <input type="number" step="0.01" name="total_cost" id="total" readonly style="background: #edf2f7;">
+            </div>
+            <div class="form-group" id="final_cost_field" style="display: none;">
+                <label>💲 الكلفة النهائية (يدوي - لقسم الحركة فقط)</label>
+                <input type="number" step="0.01" name="final_cost" id="final_cost" style="background: #fefcbf; font-weight: 600;" placeholder="أدخل الكلفة الفعلية">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>📝 ملاحظات</label>
+            <textarea name="notes" rows="2"></textarea>
+        </div>
+        
+        <button type="submit" class="btn btn-success">💾 حفظ التعبئة</button>
+    </form>
+    {% endif %}
+    
+    <h3 style="margin-bottom: 15px; color: #1e3a5f;">📋 سجل التعبئات</h3>
+    <div style="overflow-x: auto;">
+        <table style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>التاريخ</th>
+                    <th>السيارة</th>
+                    <th>السائق</th>
+                    <th>نوع الوقود</th>
+                    <th>المصدر</th>
+                    <th>حالة الدفع</th>
+                    <th>اللترات</th>
+                    <th>سعر اللتر</th>
+                    <th>الكلفة النهائية</th>
+                    <th>العداد</th>
+                    {% if is_admin %}<th>إجراءات</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in fuel_records %}
+                <tr>
+                    <td>{{ f.fuel_date }}</td>
+                    <td>{{ f.car_name }}</td>
+                    <td>{{ f.driver_name or '-' }}</td>
+                    <td>
+                        {% if f.fuel_type == 'بنزين' %}
+                        <span class="badge" style="background:#fefcbf;color:#744210;">⛽ بنزين</span>
+                        {% elif f.fuel_type == 'ديزل' %}
+                        <span class="badge" style="background:#e2e8f0;color:#2d3748;">🛢️ ديزل</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>
+                        {% if f.source == 'خزان الشركة' %}
+                        <span class="badge" style="background:#c6f6d5;color:#22543d;">🏢 خزان الشركة</span>
+                        {% elif f.source == 'كازية' %}
+                        <span class="badge" style="background:#bee3f8;color:#2c5282;">🏪 كازية</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ f.payment_status or '-' }}</td>
+                    <td>{{ f.liters or '-' }}</td>
+                    <td>{{ f.price_per_liter or '-' }}</td>
+                    <td style="font-weight: 600;">
+                        {% if f.final_cost and f.payment_status == 'مدفوعة من قسم الحركة' %}
+                        <span style="color: #1e3a5f;">{{ "%.0f"|format(f.final_cost) }}</span>
+                        {% elif f.total_cost and f.payment_status == 'مدفوعة من قسم الحركة' %}
+                        <span style="color: #1e3a5f;">{{ "%.0f"|format(f.total_cost) }}</span>
+                        {% elif f.final_cost %}
+                        <span style="color: #718096;">{{ "%.0f"|format(f.final_cost) }} *</span>
+                        {% elif f.total_cost %}
+                        <span style="color: #718096;">{{ "%.0f"|format(f.total_cost) }} *</span>
+                        {% elif f.price_per_liter and f.liters %}
+                        <span style="color: #718096;">{{ "%.0f"|format(f.price_per_liter * f.liters) }} *</span>
+                        {% else %}-{% endif %}
+                    </td>
+                    <td>{{ f.km_at_fill or '-' }}</td>
+                    {% if is_admin %}
+                    <td>
+                        <a href="/fuel/edit/{{ f.id }}" class="btn btn-primary" style="padding: 5px 10px;">✏️</a>
+                        <a href="/fuel/delete/{{ f.id }}" class="btn btn-danger" style="padding: 5px 10px;" onclick="return confirm('هل أنت متأكد؟')">🗑️</a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p style="color: #718096; font-size: 12px; margin-top: 10px;">
+            * الكلفة التقديرية (بناءً على سعر اللتر) — لأغراض حساب استهلاك السيارة فقط.
+        </p>
+    </div>
+    
+    {% if not fuel_records %}
+    <p style="color: #718096; text-align: center; padding: 20px;">لا توجد تعبئات مسجلة بعد.</p>
+    {% endif %}
+</div>
+
+<script>
+function calculateTotal() {
+    var liters = parseFloat(document.getElementById('liters').value) || 0;
+    var price = parseFloat(document.getElementById('price').value) || 0;
+    var total = (liters * price).toFixed(2);
+    document.getElementById('total').value = total;
+    var finalField = document.getElementById('final_cost');
+    if (finalField && (!finalField.value || finalField.value == '0')) {
+        finalField.value = total;
+    }
+}
+
+function toggleAddPayment() {
+    var source = document.getElementById('add_source').value;
+    var paymentField = document.getElementById('add_payment_field');
+    var finalField = document.getElementById('final_cost_field');
+    if (source === 'كازية') {
+        paymentField.style.display = 'block';
+        finalField.style.display = 'block';
+    } else {
+        paymentField.style.display = 'none';
+        finalField.style.display = 'none';
+    }
+}
+
+function toggleEditPayment() {
+    var source = document.getElementById('edit_source').value;
+    var paymentField = document.getElementById('edit_payment_field');
+    if (source === 'كازية') {
+        paymentField.style.display = 'block';
+    } else {
+        paymentField.style.display = 'none';
+    }
+}
+</script>
+
+{% endblock %}

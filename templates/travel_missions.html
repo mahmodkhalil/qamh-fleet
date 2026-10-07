@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+
+{% block title %}مهمات السفر - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>✈️ إدارة مهمات السفر</h2>
+    
+    <div style="background: #ebf8ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-right: 4px solid #3182ce;">
+        <strong>ℹ️ ملاحظة:</strong> الرحلات التي مسافتها <strong>75 كم أو أكثر</strong> تُعتبر <strong>مهمة سفر</strong>، وما دونها تُسجّل لكن لا تُحسب في المجاميع.
+    </div>
+    
+    {% if is_admin %}
+    <form method="POST" action="/travel_missions/add" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <h3 style="margin-bottom: 15px; color: #1e3a5f;">➕ إضافة مهمة سفر جديدة</h3>
+        
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>📅 التاريخ *</label>
+                <input type="date" name="date" required>
+            </div>
+            <div class="form-group">
+                <label>👤 السائق *</label>
+                <select name="driver_id" required>
+                    <option value="">-- اختر السائق --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}">{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>🔢 المسافة (كم) *</label>
+                <input type="number" step="0.1" name="distance_km" required placeholder="مثال: 100">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>📝 وصف المهمة</label>
+            <input type="text" name="description" placeholder="مثال: سفر إلى حلب لتسليم أوراق">
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>🕐 وقت الذهاب</label>
+                <input type="time" name="departure_time">
+            </div>
+            <div class="form-group">
+                <label>🕐 وقت العودة</label>
+                <input type="time" name="return_time">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>📋 ملاحظات</label>
+            <input type="text" name="notes">
+        </div>
+        
+        <button type="submit" class="btn btn-success">💾 حفظ المهمة</button>
+    </form>
+    {% endif %}
+    
+    <h3 style="margin-bottom: 15px; color: #1e3a5f;">📋 سجل مهمات السفر</h3>
+    <div style="overflow-x: auto;">
+        <table style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>التاريخ</th>
+                    <th>السائق</th>
+                    <th>الوصف</th>
+                    <th>المسافة (كم)</th>
+                    <th>مهمة سفر؟</th>
+                    <th>الذهاب</th>
+                    <th>العودة</th>
+                    <th>ملاحظات</th>
+                    {% if is_admin %}<th>إجراءات</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in missions %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ m.date }}</td>
+                    <td>{{ m.driver_name }}</td>
+                    <td>{{ m.description or '-' }}</td>
+                    <td>{{ m.distance_km or 0 }}</td>
+                    <td>
+                        {% if m.is_travel == 1 %}
+                        <span class="badge" style="background:#c6f6d5;color:#22543d;">✅ نعم</span>
+                        {% else %}
+                        <span class="badge" style="background:#fed7d7;color:#742a2a;">❌ لا</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ m.departure_time or '-' }}</td>
+                    <td>{{ m.return_time or '-' }}</td>
+                    <td>{{ m.notes or '-' }}</td>
+                    {% if is_admin %}
+                    <td>
+                        <a href="/travel_missions/delete/{{ m.id }}" class="btn btn-danger" style="padding: 5px 10px;" onclick="return confirm('هل أنت متأكد؟')">🗑️</a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if not missions %}
+    <p style="color: #718096; text-align: center; padding: 20px;">لا توجد مهمات سفر مسجلة بعد.</p>
+    {% endif %}
+</div>
+
+{% endblock %}
