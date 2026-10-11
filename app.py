@@ -665,10 +665,15 @@ def add_car():
     plate = request.form.get('plate_number', '')
     car_type = request.form.get('car_type', '')
     notes = request.form.get('notes', '')
+    expected_consumption = request.form.get('expected_consumption') or 0
+    try:
+        expected_consumption = float(expected_consumption)
+    except (ValueError, TypeError):
+        expected_consumption = 0
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, "INSERT INTO cars (name, plate_number, car_type, notes) VALUES (?, ?, ?, ?)",
-                   (name, plate, car_type, notes))
+    execute_query(cursor, "INSERT INTO cars (name, plate_number, car_type, notes, expected_consumption) VALUES (?, ?, ?, ?, ?)",
+                   (name, plate, car_type, notes, expected_consumption))
     conn.commit()
     conn.close()
     flash('تم إضافة السيارة', 'success')
@@ -678,15 +683,20 @@ def add_car():
 @app.route('/cars/edit/<int:car_id>', methods=['GET', 'POST'])
 @admin_required
 def edit_car(car_id):
-    conn = get_connection()
+       conn = get_connection()
     cursor = conn.cursor()
     if request.method == 'POST':
         name = request.form['name']
         plate = request.form.get('plate_number', '')
         car_type = request.form.get('car_type', '')
         notes = request.form.get('notes', '')
-        execute_query(cursor, "UPDATE cars SET name=?, plate_number=?, car_type=?, notes=? WHERE id=?",
-                       (name, plate, car_type, notes, car_id))
+        expected_consumption = request.form.get('expected_consumption') or 0
+        try:
+            expected_consumption = float(expected_consumption)
+        except (ValueError, TypeError):
+            expected_consumption = 0
+        execute_query(cursor, "UPDATE cars SET name=?, plate_number=?, car_type=?, notes=?, expected_consumption=? WHERE id=?",
+                       (name, plate, car_type, notes, expected_consumption, car_id))
         conn.commit()
         conn.close()
         flash('تم تعديل السيارة', 'success')
