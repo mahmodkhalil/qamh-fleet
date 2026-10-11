@@ -685,7 +685,7 @@ def add_car():
 @admin_required
 def edit_car(car_id):
        conn = get_connection()
-    cursor = conn.cursor()
+        cursor=conn.cursor()
     if request.method == 'POST':
         name = request.form['name']
         plate = request.form.get('plate_number', '')
