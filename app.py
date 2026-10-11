@@ -7,7 +7,7 @@ import sys
 import subprocess
 import os
 import base64
-from datetime import datetime
+from datetime import datetime, timedelta
 import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
@@ -2144,7 +2144,7 @@ def api_driver_start_trip():
             print(f"خطأ في حفظ صورة البداية: {e}")
             return jsonify({'success': False, 'error': 'فشل حفظ صورة العداد'}), 500
         
-        now = datetime.now()
+        now = datetime.now() + timedelta(hours=3)
         trip_date = now.strftime('%Y-%m-%d')
         start_time = now.strftime('%H:%M:%S')
         
@@ -2232,7 +2232,7 @@ def api_driver_end_trip():
             conn.close()
             return jsonify({'success': False, 'error': 'فشل حفظ صورة العداد'}), 500
         
-        now = datetime.now()
+        now = datetime.now() + timedelta(hours=3)
         end_time = now.strftime('%H:%M:%S')
         
         execute_query(cursor, """
