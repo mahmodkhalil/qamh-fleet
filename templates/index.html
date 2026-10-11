@@ -146,8 +146,8 @@
                         <td>{{ trip.destination or '-' }}</td>
                         <td>{{ trip.trip_type or '-' }}</td>
                         <td>{{ trip.requester or '-' }}</td>
-                        <td>{{ trip.exit_time or '-' }}</td>
-                        <td>{{ trip.return_time or '-' }}</td>
+                        <td>{{ trip.exit_time or trip.start_time or '-' }}</td>
+                        <td>{{ trip.return_time or trip.end_time or '-' }}</td>
                         <td>{{ trip.start_km or '-' }}</td>
                         <td>{{ trip.end_km or '-' }}</td>
                         <td>{{ trip.distance or '-' }}</td>
