@@ -1552,12 +1552,13 @@ def reports_trips():
     cost_per_km_map = {}
     execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
     for row in cursor.fetchall():
-        cost_per_km_map[row['car_id']] = get_car_cost_per_km(row['car_id'], conn)
+                cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
     trips_with_cost = []
     for t in trips:
         t_dict = dict(t)
-        t_dict['cost_per_km'] = cost_per_km_map.get(t['car_id'], 0)
-        t_dict['trip_cost'] = (t['distance'] or 0) * t_dict['cost_per_km']
+        cpk = cost_per_km_map.get(t['car_id'])
+        t_dict['cost_per_km'] = cpk
+        t_dict['trip_cost'] = ((t['distance'] or 0) * cpk) if cpk else None
         trips_with_cost.append(t_dict)
     trips_by_car = {}
     for t in trips_with_cost:
