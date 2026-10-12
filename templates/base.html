@@ -399,6 +399,7 @@
         {% endif %}
         <a href="/cars">🚗 السيارات</a>
         <a href="/drivers">👤 السائقين</a>
+        <a href="/requesting_parties">🏢 الجهات الطالبة</a>
         <a href="/fuel">⛽ تعبئة الوقود</a>
         <a href="/maintenance">🔧 الصيانة</a>
         
@@ -407,6 +408,7 @@
             <div class="dropdown-content">
                 <a href="/reports">📊 التقارير الشهرية</a>
                 <a href="/reports/trips">📋 تقرير الرحلات</a>
+                <a href="/reports/requesting_parties">🏢 تقرير الجهات الطالبة</a>
                 <a href="/reports/fuel">⛽ تقرير الوقود</a>
                 <a href="/reports/maintenance">🔧 تقرير الصيانة</a>
                 <a href="/reports/drivers">👤 تقرير السائقين</a>
@@ -454,9 +456,9 @@ function checkPendingTrips() {
                 if (homeLink) {
                     let badge = homeLink.querySelector('.menu-badge');
                     if (!badge) {
-                        badge = document.createElement('span');
-                        badge.className = 'menu-badge';
-                        homeLink.appendChild(badge);
+                    badge = document.createElement('span');
+                    badge.className = 'menu-badge';
+                    homeLink.appendChild(badge);
                     }
                     badge.textContent = data.count;
                 }

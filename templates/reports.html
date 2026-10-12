@@ -26,7 +26,7 @@
                 </select>
             </div>
         </div>
-        <div class="form-row-3">
+        <div class="form-row">
             <div class="form-group">
                 <label>السيارة</label>
                 <select name="car_id">
@@ -42,6 +42,17 @@
                     <option value="">-- كل السائقين --</option>
                     {% for driver in drivers %}
                     <option value="{{ driver.id }}" {% if driver.id == selected_driver %}selected{% endif %}>{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <div class="form-group">
+                <label>🏢 الجهة الطالبة</label>
+                <select name="requesting_party_id">
+                    <option value="">-- كل الجهات --</option>
+                    {% for party in parties %}
+                    <option value="{{ party.id }}" {% if selected_party and party.id == selected_party|int %}selected{% endif %}>{{ party.name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -62,16 +73,17 @@
         <div class="form-group">
             <label>📋 نوع التقرير</label>
             <select name="report_type">
-                <option value="all" {% if report_type == 'all' %}selected{% endif %}>📊 التقرير الكامل (رحلات + وقود + صيانة + سائقين)</option>
+                <option value="all" {% if report_type == 'all' %}selected{% endif %}>📊 التقرير الكامل (رحلات + وقود + صيانة + سائقين + جهات)</option>
                 <option value="trips" {% if report_type == 'trips' %}selected{% endif %}>📅 الرحلات فقط</option>
                 <option value="fuel" {% if report_type == 'fuel' %}selected{% endif %}>⛽ الوقود فقط</option>
                 <option value="maintenance" {% if report_type == 'maintenance' %}selected{% endif %}>🔧 الصيانة فقط</option>
                 <option value="drivers" {% if report_type == 'drivers' %}selected{% endif %}>👤 السائقين فقط (مهمات + إضافي)</option>
+                <option value="parties" {% if report_type == 'parties' %}selected{% endif %}>🏢 الجهات الطالبة فقط</option>
             </select>
         </div>
         
         <button type="submit" class="btn btn-primary">🔍 عرض التقرير</button>
-        <a href="/reports/export?month={{ selected_month }}&year={{ selected_year }}&car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&report_type={{ report_type or 'all' }}&payment_filter={{ payment_filter or '' }}" class="btn btn-success">📥 تصدير Excel</a>
+        <a href="/reports/export?month={{ selected_month }}&year={{ selected_year }}&car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&requesting_party_id={{ selected_party or '' }}&report_type={{ report_type or 'all' }}&payment_filter={{ payment_filter or '' }}" class="btn btn-success">📥 تصدير Excel</a>
     </form>
 </div>
 
@@ -170,6 +182,7 @@
                     <tr>
                         <th>التاريخ</th>
                         <th>السائق</th>
+                        <th>الجهة الطالبة</th>
                         <th>الوجهة</th>
                         <th>نوع الرحلة</th>
                         <th>الخروج</th>
@@ -185,6 +198,7 @@
                     <tr>
                         <td>{{ trip.trip_date }}</td>
                         <td>{{ trip.driver_name }}</td>
+                        <td>{{ trip.party_name or trip.requester or '-' }}</td>
                         <td>{{ trip.destination or '-' }}</td>
                         <td>{{ trip.trip_type or '-' }}</td>
                         <td>{{ trip.exit_time or '-' }}</td>
@@ -364,6 +378,50 @@
         {% endif %}
     </div>
     {% endfor %}
+</div>
+{% endif %}
+
+{% if report_data.parties and (report_type == 'all' or report_type == 'parties') %}
+<div class="card">
+    <h2>🏢 تفاصيل الجهات الطالبة</h2>
+    {% if report_data.parties %}
+    <div style="overflow-x: auto;">
+        <table style="background: white; font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>الجهة الطالبة</th>
+                    <th>عدد الرحلات</th>
+                    <th>مجموع الكيلومترات</th>
+                    <th style="background:#e9d8fd;color:#553c9a;">إجمالي الكلفة (ل.س)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% set total_parties_km = namespace(value=0) %}
+                {% set total_parties_cost = namespace(value=0) %}
+                {% for p in report_data.parties %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong>{{ p.party_name }}</strong></td>
+                    <td>{{ p.trips_count }}</td>
+                    <td>{{ "%.1f"|format(p.total_km or 0) }} كم</td>
+                    <td style="font-weight: 700; color: #553c9a;">{{ "%.0f"|format(p.total_cost or 0) }}</td>
+                </tr>
+                {% set total_parties_km.value = total_parties_km.value + (p.total_km or 0) %}
+                {% set total_parties_cost.value = total_parties_cost.value + (p.total_cost or 0) %}
+                {% endfor %}
+                <tr style="background: #fef3c7; font-weight: 700; border-top: 3px solid #d69e2e;">
+                    <td colspan="2" style="text-align: center; padding: 12px; color: #744210;">📊 الإجمالي</td>
+                    <td style="padding: 12px;">-</td>
+                    <td style="padding: 12px; color: #744210;">{{ "%.1f"|format(total_parties_km.value) }} كم</td>
+                    <td style="padding: 12px; color: #553c9a;">{{ "%.0f"|format(total_parties_cost.value) }} ل.س</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align: center; color: #718096; padding: 20px;">لا توجد بيانات للجهات الطالبة في هذه الفترة.</p>
+    {% endif %}
 </div>
 {% endif %}
 

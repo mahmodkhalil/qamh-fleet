@@ -61,8 +61,13 @@
         
         <div class="form-row">
             <div class="form-group">
-                <label>👨‍💼 طالب الرحلة</label>
-                <input type="text" name="requester" value="{{ edit_trip.requester if edit_trip else '' }}" placeholder="اسم الشخص أو القسم">
+                <label>🏢 الجهة الطالبة *</label>
+                <select name="requesting_party_id" required>
+                    <option value="">-- اختر الجهة الطالبة --</option>
+                    {% for party in parties %}
+                    <option value="{{ party.id }}" {% if edit_trip and edit_trip.requesting_party_id == party.id %}selected{% endif %}>{{ party.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
             <div class="form-group">
                 <label>&nbsp;</label>

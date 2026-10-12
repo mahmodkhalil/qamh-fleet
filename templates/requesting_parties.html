@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+
+{% block title %}الجهات الطالبة - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>🏢 الجهات الطالبة</h2>
+    
+    {% if is_admin and edit_party %}
+    <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-right: 4px solid #f6ad55;">
+        <h3 style="margin-bottom: 15px; color: #744210;">✏️ تعديل الجهة: {{ edit_party.name }}</h3>
+        <form method="POST" action="/requesting_parties/edit/{{ edit_party.id }}">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>اسم الجهة *</label>
+                    <input type="text" name="name" value="{{ edit_party.name }}" required>
+                </div>
+                <div class="form-group">
+                    <label>ملاحظات</label>
+                    <input type="text" name="notes" value="{{ edit_party.notes or '' }}">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-success">💾 حفظ التعديل</button>
+            <a href="/requesting_parties" class="btn btn-secondary">إلغاء</a>
+        </form>
+    </div>
+    {% endif %}
+    
+    {% if is_admin and not edit_party %}
+    <form method="POST" action="/requesting_parties/add" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <h3 style="margin-bottom: 15px; color: #1e3a5f;">➕ إضافة جهة طالبة جديدة</h3>
+        <div class="form-row">
+            <div class="form-group">
+                <label>اسم الجهة *</label>
+                <input type="text" name="name" required placeholder="مثال: الدراسات / مشروع النقل">
+            </div>
+            <div class="form-group">
+                <label>ملاحظات</label>
+                <input type="text" name="notes" placeholder="اختياري">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-success">💾 إضافة الجهة</button>
+    </form>
+    {% endif %}
+    
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>اسم الجهة</th>
+                    <th>ملاحظات</th>
+                    <th>الحالة</th>
+                    {% if is_admin %}<th>إجراءات</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for party in parties %}
+                <tr>
+                    <td>{{ party.id }}</td>
+                    <td><strong>{{ party.name }}</strong></td>
+                    <td>{{ party.notes or '-' }}</td>
+                    <td>
+                        {% if party.active == 1 %}
+                        <span style="background:#c6f6d5;color:#22543d;padding:4px 10px;border-radius:6px;font-weight:700;font-size:12px;">✅ نشط</span>
+                        {% else %}
+                        <span style="background:#fed7d7;color:#742a2a;padding:4px 10px;border-radius:6px;font-weight:700;font-size:12px;">⛔ معطّل</span>
+                        {% endif %}
+                    </td>
+                    {% if is_admin %}
+                    <td>
+                        <a href="/requesting_parties/edit/{{ party.id }}" class="btn btn-primary" style="padding: 5px 10px;" title="تعديل">✏️</a>
+                        <a href="/requesting_parties/toggle/{{ party.id }}" class="btn btn-warning" style="padding: 5px 10px;" title="{% if party.active == 1 %}تعطيل{% else %}تفعيل{% endif %}">{% if party.active == 1 %}⏸️{% else %}▶️{% endif %}</a>
+                        <a href="/requesting_parties/delete/{{ party.id }}" class="btn btn-danger" style="padding: 5px 10px;" onclick="return confirm('هل أنت متأكد من الحذف؟')" title="حذف">🗑️</a>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    
+    {% if not parties %}
+    <p style="color: #718096; text-align: center; padding: 20px;">لا توجد جهات طالبة مسجلة بعد.</p>
+    {% endif %}
+</div>
+
+{% endblock %}
