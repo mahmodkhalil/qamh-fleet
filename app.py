@@ -567,9 +567,9 @@ def index():
     """)
     pending_trips_count = cursor.fetchone()['cnt']
     cost_per_km_map = {}
-    execute_query(cursor, "SELECT DISTINCT car_id FROM cars WHERE active=1")
+    execute_query(cursor, "SELECT DISTINCT id FROM cars WHERE active=1")
     for row in cursor.fetchall():
-        cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+        cost_per_km_map[row['id']] = get_car_estimated_cost_per_km(row['id'], conn)
     conn.close()
     trips_by_car = {}
     for t in all_recent_trips:
