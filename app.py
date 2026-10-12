@@ -790,8 +790,14 @@ def edit_car(car_id):
         plate = request.form.get('plate_number', '')
         car_type = request.form.get('car_type', '')
         notes = request.form.get('notes', '')
-        execute_query(cursor, "UPDATE cars SET name=?, plate_number=?, car_type=?, notes=? WHERE id=?",
-                       (name, plate, car_type, notes, car_id))
+        fuel_type = request.form.get('fuel_type', '')
+        expected_consumption = request.form.get('expected_consumption') or 0
+        try:
+            expected_consumption = float(expected_consumption)
+        except (ValueError, TypeError):
+            expected_consumption = 0
+        execute_query(cursor, "UPDATE cars SET name=?, plate_number=?, car_type=?, notes=?, fuel_type=?, expected_consumption=? WHERE id=?",
+                       (name, plate, car_type, notes, fuel_type, expected_consumption, car_id))
         conn.commit()
         conn.close()
         flash('تم تعديل السيارة', 'success')
