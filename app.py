@@ -315,6 +315,8 @@ def ensure_all_tables():
         cursor = conn.cursor()
         if is_postgres():
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS cars (id SERIAL PRIMARY KEY, name TEXT NOT NULL, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
+            execute_query(cursor, "ALTER TABLE cars ADD COLUMN IF NOT EXISTS expected_consumption REAL DEFAULT 0")  
+            execute_query(cursor, "ALTER TABLE cars ADD COLUMN IF NOT EXISTS fuel_type TEXT DEFAULT ''")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS drivers (id SERIAL PRIMARY KEY, name TEXT NOT NULL, phone TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS trips (id SERIAL PRIMARY KEY, trip_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT, start_image TEXT, end_image TEXT, start_time TEXT, end_time TEXT, trip_source TEXT DEFAULT 'manual', driver_confirmed INTEGER DEFAULT 0, admin_seen INTEGER DEFAULT 0, admin_seen_at TEXT)""")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS fuel (id SERIAL PRIMARY KEY, fuel_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER, fuel_type TEXT, source TEXT, payment_status TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, notes TEXT)""")
@@ -323,6 +325,12 @@ def ensure_all_tables():
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS overtime (id SERIAL PRIMARY KEY, date TEXT NOT NULL, driver_id INTEGER NOT NULL, morning_hours REAL DEFAULT 0, evening_hours REAL DEFAULT 0, notes TEXT)""")
         else:
             cursor.execute("""CREATE TABLE IF NOT EXISTS cars (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
+             cursor.execute("PRAGMA table_info(cars)")
+            cars_cols = {row[1] for row in cursor.fetchall()}
+            if 'expected_consumption' not in cars_cols:
+                cursor.execute("ALTER TABLE cars ADD COLUMN expected_consumption REAL DEFAULT 0")
+            if 'fuel_type' not in cars_cols:
+                cursor.execute("ALTER TABLE cars ADD COLUMN fuel_type TEXT DEFAULT ''")
             cursor.execute("""CREATE TABLE IF NOT EXISTS drivers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
             cursor.execute("""CREATE TABLE IF NOT EXISTS trips (id INTEGER PRIMARY KEY AUTOINCREMENT, trip_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT)""")
             cursor.execute("""CREATE TABLE IF NOT EXISTS fuel (id INTEGER PRIMARY KEY AUTOINCREMENT, fuel_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER, fuel_type TEXT, source TEXT, payment_status TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, notes TEXT)""")
