@@ -28,15 +28,17 @@
                 </select>
             </div>
             <div class="form-group">
-                <label>&nbsp;</label>
-                <div style="display: flex; gap: 5px;">
-                    <button type="submit" class="btn btn-primary" style="flex: 1;">🔍 عرض</button>
-                    <a href="/reports/trips" class="btn btn-secondary">🔄</a>
-                </div>
+                <label>🏢 الجهة الطالبة</label>
+                <select name="requesting_party_id">
+                    <option value="">-- كل الجهات --</option>
+                    {% for party in parties %}
+                    <option value="{{ party.id }}" {% if party.id|string == selected_party %}selected{% endif %}>{{ party.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
         </div>
         
-        <div class="form-row">
+        <div class="form-row-3">
             <div class="form-group">
                 <label>📅 من تاريخ</label>
                 <input type="date" name="date_from" value="{{ date_from or '' }}">
@@ -45,9 +47,16 @@
                 <label>📅 إلى تاريخ</label>
                 <input type="date" name="date_to" value="{{ date_to or '' }}">
             </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <div style="display: flex; gap: 5px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">🔍 عرض</button>
+                    <a href="/reports/trips" class="btn btn-secondary">🔄</a>
+                </div>
+            </div>
         </div>
         
-        <a href="/reports/trips/export?car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}" class="btn btn-success">📥 تصدير Excel</a>
+        <a href="/reports/trips/export?car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&requesting_party_id={{ selected_party or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}" class="btn btn-success">📥 تصدير Excel</a>
     </form>
 </div>
 
@@ -64,6 +73,10 @@
     <div class="stat-box">
         <div class="number">{{ summary.by_car|length }}</div>
         <div class="label">🚗 عدد السيارات</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #553c9a;">
+        <div class="number">{{ "%.0f"|format(summary.total_cost or 0) }}</div>
+        <div class="label">💰 إجمالي الكلفة (ل.س)</div>
     </div>
 </div>
 
@@ -112,7 +125,7 @@
                         <th>بداية الانطلاق</th>
                         <th>الوجهة</th>
                         <th>نوع الرحلة</th>
-                        <th>طالب الرحلة</th>
+                        <th>🏢 الجهة الطالبة</th>
                         <th>الخروج</th>
                         <th>العودة</th>
                         <th>عداد البداية</th>
@@ -134,7 +147,7 @@
                         <td>{{ t.start_location or '-' }}</td>
                         <td>{{ t.destination or '-' }}</td>
                         <td>{{ t.trip_type or '-' }}</td>
-                        <td>{{ t.requester or '-' }}</td>
+                        <td>{{ t.party_name or t.requester or '-' }}</td>
                         <td>{{ t.exit_time or '-' }}</td>
                         <td>{{ t.return_time or '-' }}</td>
                         <td>{{ t.start_km or '-' }}</td>
