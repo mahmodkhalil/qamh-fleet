@@ -764,10 +764,16 @@ def add_car():
     plate = request.form.get('plate_number', '')
     car_type = request.form.get('car_type', '')
     notes = request.form.get('notes', '')
+    fuel_type = request.form.get('fuel_type', '')
+    expected_consumption = request.form.get('expected_consumption') or 0
+    try:
+        expected_consumption = float(expected_consumption)
+    except (ValueError, TypeError):
+        expected_consumption = 0
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, "INSERT INTO cars (name, plate_number, car_type, notes) VALUES (?, ?, ?, ?)",
-                   (name, plate, car_type, notes))
+    execute_query(cursor, "INSERT INTO cars (name, plate_number, car_type, notes, fuel_type, expected_consumption) VALUES (?, ?, ?, ?, ?, ?)",
+                   (name, plate, car_type, notes, fuel_type, expected_consumption))
     conn.commit()
     conn.close()
     flash('تم إضافة السيارة', 'success')
