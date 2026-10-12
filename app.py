@@ -263,6 +263,7 @@ def get_car_liters_per_100km(car_id, conn=None):
         return 0
     return (total_liters / total_km) * 100
 
+
 def get_last_station_price_per_liter(car_id, conn=None):
     """
     ترجع آخر سعر لتر من تعبئة كازية لهذه السيارة بنفس نوع الوقود.
@@ -312,8 +313,6 @@ def get_last_station_price_per_liter(car_id, conn=None):
     if close_conn:
         conn.close()
     return price
-
-
 
 
 def get_car_estimated_cost_per_km(car_id, conn=None):
@@ -406,7 +405,7 @@ def ensure_all_tables():
         cursor = conn.cursor()
         if is_postgres():
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS cars (id SERIAL PRIMARY KEY, name TEXT NOT NULL, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
-            execute_query(cursor, "ALTER TABLE cars ADD COLUMN IF NOT EXISTS expected_consumption REAL DEFAULT 0")  
+            execute_query(cursor, "ALTER TABLE cars ADD COLUMN IF NOT EXISTS expected_consumption REAL DEFAULT 0")
             execute_query(cursor, "ALTER TABLE cars ADD COLUMN IF NOT EXISTS fuel_type TEXT DEFAULT ''")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS drivers (id SERIAL PRIMARY KEY, name TEXT NOT NULL, phone TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS trips (id SERIAL PRIMARY KEY, trip_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT, start_image TEXT, end_image TEXT, start_time TEXT, end_time TEXT, trip_source TEXT DEFAULT 'manual', driver_confirmed INTEGER DEFAULT 0, admin_seen INTEGER DEFAULT 0, admin_seen_at TEXT)""")
@@ -416,7 +415,7 @@ def ensure_all_tables():
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS overtime (id SERIAL PRIMARY KEY, date TEXT NOT NULL, driver_id INTEGER NOT NULL, morning_hours REAL DEFAULT 0, evening_hours REAL DEFAULT 0, notes TEXT)""")
         else:
             cursor.execute("""CREATE TABLE IF NOT EXISTS cars (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
-             cursor.execute("PRAGMA table_info(cars)")
+            cursor.execute("PRAGMA table_info(cars)")
             cars_cols = {row[1] for row in cursor.fetchall()}
             if 'expected_consumption' not in cars_cols:
                 cursor.execute("ALTER TABLE cars ADD COLUMN expected_consumption REAL DEFAULT 0")
@@ -1560,7 +1559,7 @@ def reports_trips():
     cost_per_km_map = {}
     execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
     for row in cursor.fetchall():
-                cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+        cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
     trips_with_cost = []
     for t in trips:
         t_dict = dict(t)
