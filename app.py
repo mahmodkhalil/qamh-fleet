@@ -316,6 +316,45 @@ def get_last_station_price_per_liter(car_id, conn=None):
 
 
 
+def get_car_estimated_cost_per_km(car_id, conn=None):
+    """
+    كلفة/كم = (expected_consumption × آخر سعر لتر) ÷ 100
+    ترجع None إذا:
+      - expected_consumption = 0 أو None
+      - لا يوجد سعر لتر متاح (لا للسيارة ولا للسوق)
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    cursor = conn.cursor()
+    execute_query(cursor, "SELECT expected_consumption FROM cars WHERE id = ?", (car_id,))
+    car = cursor.fetchone()
+    expected = car['expected_consumption'] if car else None
+    if not expected:
+        if close_conn:
+            conn.close()
+        return None
+    try:
+        expected = float(expected)
+    except (ValueError, TypeError):
+        if close_conn:
+            conn.close()
+        return None
+    if expected <= 0:
+        if close_conn:
+            conn.close()
+        return None
+    price = get_last_station_price_per_liter(car_id, conn)
+    if price is None:
+        if close_conn:
+            conn.close()
+        return None
+    if close_conn:
+        conn.close()
+    return (expected * price) / 100
+
+
 def ensure_trips_columns():
     try:
         conn = get_connection()
