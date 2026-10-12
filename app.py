@@ -263,6 +263,58 @@ def get_car_liters_per_100km(car_id, conn=None):
         return 0
     return (total_liters / total_km) * 100
 
+def get_last_station_price_per_liter(car_id, conn=None):
+    """
+    ترجع آخر سعر لتر من تعبئة كازية لهذه السيارة بنفس نوع الوقود.
+    إذا ما في، ترجع آخر سعر كازية في النظام كله بنفس نوع الوقود.
+    إذا ما في، ترجع None.
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    cursor = conn.cursor()
+    execute_query(cursor, "SELECT fuel_type FROM cars WHERE id = ?", (car_id,))
+    car = cursor.fetchone()
+    car_fuel_type = car['fuel_type'] if car else None
+    if not car_fuel_type:
+        if close_conn:
+            conn.close()
+        return None
+    execute_query(cursor, """
+        SELECT price_per_liter FROM fuel
+        WHERE car_id = ? AND source = 'كازية' AND fuel_type = ?
+          AND price_per_liter IS NOT NULL AND price_per_liter > 0
+        ORDER BY fuel_date DESC, id DESC
+        LIMIT 1
+    """, (car_id, car_fuel_type))
+    row = cursor.fetchone()
+    price = None
+    if row and row['price_per_liter']:
+        try:
+            price = float(row['price_per_liter'])
+        except (ValueError, TypeError):
+            price = None
+    if price is None:
+        execute_query(cursor, """
+            SELECT price_per_liter FROM fuel
+            WHERE source = 'كازية' AND fuel_type = ?
+              AND price_per_liter IS NOT NULL AND price_per_liter > 0
+            ORDER BY fuel_date DESC, id DESC
+            LIMIT 1
+        """, (car_fuel_type,))
+        row = cursor.fetchone()
+        if row and row['price_per_liter']:
+            try:
+                price = float(row['price_per_liter'])
+            except (ValueError, TypeError):
+                price = None
+    if close_conn:
+        conn.close()
+    return price
+
+
+
 
 def ensure_trips_columns():
     try:
