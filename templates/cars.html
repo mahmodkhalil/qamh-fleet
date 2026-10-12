@@ -37,6 +37,20 @@
                     <input type="number" name="expected_consumption" step="0.1" min="0" value="{{ edit_car.expected_consumption or 0 }}">
                     <small style="color:#718096;font-size:12px;">اتركه 0 إذا ما بدك تنبيه لهذه السيارة</small>
                 </div>
+                <div class="form-group">
+                    <label>🔥 نوع الوقود *</label>
+                    <div style="display: flex; gap: 25px; margin-top: 10px; padding: 8px 0;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal; margin: 0;">
+                            <input type="radio" name="fuel_type" value="بنزين" {% if edit_car.fuel_type == 'بنزين' %}checked{% endif %} required style="width: 18px; height: 18px;">
+                            <span style="font-size: 15px;">بنزين</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal; margin: 0;">
+                            <input type="radio" name="fuel_type" value="ديزل" {% if edit_car.fuel_type == 'ديزل' %}checked{% endif %} required style="width: 18px; height: 18px;">
+                            <span style="font-size: 15px;">ديزل</span>
+                        </label>
+                    </div>
+                    <small style="color:#718096;font-size:12px;">يستخدم لحساب كلفة الرحلات (آخر سعر كازية لهذا النوع)</small>
+                </div>
             </div>
             <button type="submit" class="btn btn-success">💾 حفظ التعديل</button>
             <a href="/cars" class="btn btn-secondary">إلغاء</a>
@@ -73,6 +87,20 @@
                 <input type="number" name="expected_consumption" step="0.1" min="0" value="0">
                 <small style="color:#718096;font-size:12px;">اتركه 0 إذا ما بدك تنبيه لهذه السيارة</small>
             </div>
+            <div class="form-group">
+                <label>🔥 نوع الوقود *</label>
+                <div style="display: flex; gap: 25px; margin-top: 10px; padding: 8px 0;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal; margin: 0;">
+                        <input type="radio" name="fuel_type" value="بنزين" required style="width: 18px; height: 18px;">
+                        <span style="font-size: 15px;">بنزين</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: normal; margin: 0;">
+                        <input type="radio" name="fuel_type" value="ديزل" required style="width: 18px; height: 18px;">
+                        <span style="font-size: 15px;">ديزل</span>
+                    </label>
+                </div>
+                <small style="color:#718096;font-size:12px;">يستخدم لحساب كلفة الرحلات (آخر سعر كازية لهذا النوع)</small>
+            </div>
         </div>
         <button type="submit" class="btn btn-success">💾 إضافة السيارة</button>
     </form>
@@ -86,6 +114,7 @@
                     <th>الاسم</th>
                     <th>رقم اللوحة</th>
                     <th>النوع</th>
+                    <th>🔥 نوع الوقود</th>
                     <th>⛽ الاستهلاك الطبيعي (لتر/100كم)</th>
                     <th>ملاحظات</th>
                     {% if is_admin %}<th>إجراءات</th>{% endif %}
@@ -98,6 +127,15 @@
                     <td>{{ car.name }}</td>
                     <td>{{ car.plate_number or '-' }}</td>
                     <td>{{ car.car_type or '-' }}</td>
+                    <td>
+                        {% if car.fuel_type == 'بنزين' %}
+                        <span style="background:#c6f6d5;color:#22543d;padding:4px 10px;border-radius:6px;font-weight:700;">بنزين</span>
+                        {% elif car.fuel_type == 'ديزل' %}
+                        <span style="background:#bee3f8;color:#2a4365;padding:4px 10px;border-radius:6px;font-weight:700;">ديزل</span>
+                        {% else %}
+                        <span style="color:#a0aec0;">—</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if car.expected_consumption and car.expected_consumption > 0 %}
                         <span style="background:#e9d8fd;color:#553c9a;padding:4px 10px;border-radius:6px;font-weight:700;">

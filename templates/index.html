@@ -133,10 +133,13 @@
                         <th>عداد البداية</th>
                         <th>عداد النهاية</th>
                         <th>المسافة</th>
+                        <th style="background:#e9d8fd;color:#553c9a;">كلفة الرحلة (ل.س)</th>
                         {% if is_admin %}<th>إجراءات</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody>
+                    {% set total_km = namespace(value=0) %}
+                    {% set total_cost = namespace(value=0) %}
                     {% for trip in car_trips %}
                     <tr>
                         <td>{{ loop.index }}</td>
@@ -151,6 +154,11 @@
                         <td>{{ trip.start_km or '-' }}</td>
                         <td>{{ trip.end_km or '-' }}</td>
                         <td>{{ trip.distance or '-' }}</td>
+                        <td style="font-weight: 700; color: #553c9a;">
+                            {% if trip.trip_cost %}
+                            {{ "%.0f"|format(trip.trip_cost) }}
+                            {% else %}—{% endif %}
+                        </td>
                         {% if is_admin %}
                         <td>
                             <a href="/trips/edit/{{ trip.id }}" class="btn btn-primary" style="padding: 3px 8px; font-size: 11px;">✏️</a>
@@ -158,22 +166,28 @@
                         </td>
                         {% endif %}
                     </tr>
+                    {% set total_km.value = total_km.value + (trip.distance or 0) %}
+                    {% set total_cost.value = total_cost.value + (trip.trip_cost or 0) %}
                     {% endfor %}
                     <tr style="background: #fef3c7; font-weight: 700; border-top: 3px solid #d69e2e;">
                         <td colspan="10" style="text-align: center; padding: 10px; color: #744210;">📊 الإجمالي</td>
-                        <td colspan="1" style="padding: 10px;">-</td>
-                        <td style="padding: 10px; color: #744210;">
-                            {% set total_km = namespace(value=0) %}
-                            {% for trip in car_trips %}
-                                {% set total_km.value = total_km.value + (trip.distance or 0) %}
-                            {% endfor %}
-                            {{ "%.1f"|format(total_km.value) }}
-                        </td>
+                        <td style="padding: 10px;">-</td>
+                        <td style="padding: 10px; color: #744210;">{{ "%.1f"|format(total_km.value) }} كم</td>
+                        <td style="padding: 10px; color: #553c9a;">{{ "%.0f"|format(total_cost.value) }} ل.س</td>
                         {% if is_admin %}<td style="padding: 10px;">-</td>{% endif %}
                     </tr>
                 </tbody>
             </table>
         </div>
+        {% if car_trips and car_trips[0].cost_per_km %}
+        <p style="color: #553c9a; font-size: 12px; margin-top: 8px; text-align: left;">
+            💡 كلفة/كم لهذه السيارة: {{ "%.0f"|format(car_trips[0].cost_per_km) }} ل.س
+        </p>
+        {% else %}
+        <p style="color: #a0aec0; font-size: 12px; margin-top: 8px; text-align: left;">
+            💡 كلفة/كم غير متوفرة — تأكد من تحديد نوع الوقود والاستهلاك الطبيعي لهذه السيارة
+        </p>
+        {% endif %}
     </div>
     {% endfor %}
     {% else %}

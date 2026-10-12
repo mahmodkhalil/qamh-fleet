@@ -119,7 +119,7 @@
                         <th>عداد النهاية</th>
                         <th>المسافة</th>
                         <th style="background:#e9d8fd;color:#553c9a;">تكلفة/كم</th>
-                        <th style="background:#e9d8fd;color:#553c9a;">كلفة الرحلة (تقديري)</th>
+                        <th style="background:#e9d8fd;color:#553c9a;">كلفة الرحلة (ل.س)</th>
                         <th>ملاحظات</th>
                     </tr>
                 </thead>
@@ -142,13 +142,13 @@
                         <td>{{ t.distance or '-' }}</td>
                         <td style="font-weight: 600; color: #553c9a;">
                             {% if t.cost_per_km %}
-                            {{ "%.0f"|format(t.cost_per_km) }} *
-                            {% else %}-{% endif %}
+                            {{ "%.0f"|format(t.cost_per_km) }}
+                            {% else %}—{% endif %}
                         </td>
                         <td style="font-weight: 700; color: #553c9a;">
                             {% if t.trip_cost %}
-                            {{ "%.0f"|format(t.trip_cost) }} *
-                            {% else %}-{% endif %}
+                            {{ "%.0f"|format(t.trip_cost) }}
+                            {% else %}—{% endif %}
                         </td>
                         <td>{{ t.notes or '-' }}</td>
                     </tr>
@@ -159,7 +159,7 @@
                         <td colspan="11" style="text-align: center; padding: 12px; color: #744210;">📊 الإجمالي</td>
                         <td style="padding: 12px; color: #744210;">{{ "%.1f"|format(total_km_car.value) }}</td>
                         <td style="padding: 12px;">-</td>
-                        <td style="padding: 12px; color: #744210;">{{ "%.0f"|format(total_cost_car.value) }} *</td>
+                        <td style="padding: 12px; color: #553c9a;">{{ "%.0f"|format(total_cost_car.value) }} ل.س</td>
                         <td style="padding: 12px;">-</td>
                     </tr>
                 </tbody>
@@ -168,7 +168,7 @@
     </div>
     {% endfor %}
     <p style="color: #553c9a; font-size: 12px; margin-top: 10px;">
-        * القيم تقديرية بناءً على متوسط تكلفة الكيلومتر للسيارة (اجمالي الوقود المدفوع ÷ اجمالي الكيلومترات)
+        * كلفة/كم = (الاستهلاك الطبيعي × آخر سعر كازية) ÷ 100 — تقديرية بناءً على آخر سعر سوق
     </p>
 </div>
 {% else %}
