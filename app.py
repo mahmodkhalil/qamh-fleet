@@ -567,13 +567,21 @@ def index():
         WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)
     """)
     pending_trips_count = cursor.fetchone()['cnt']
+    cost_per_km_map = {}
+    execute_query(cursor, "SELECT DISTINCT car_id FROM cars WHERE active=1")
+    for row in cursor.fetchall():
+        cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
     conn.close()
     trips_by_car = {}
     for t in all_recent_trips:
         car_name = t['car_name']
         if car_name not in trips_by_car:
             trips_by_car[car_name] = []
-        trips_by_car[car_name].append(t)
+        t_dict = dict(t)
+        cpk = cost_per_km_map.get(t['car_id'])
+        t_dict['cost_per_km'] = cpk
+        t_dict['trip_cost'] = ((t['distance'] or 0) * cpk) if cpk else None
+        trips_by_car[car_name].append(t_dict)
     trips_by_car = dict(sorted(trips_by_car.items()))
     stats = {'cars': cars_count, 'drivers': drivers_count, 'trips_month': trips_month, 'km_month': round(km_month, 1)}
     alerts = get_maintenance_alerts()
