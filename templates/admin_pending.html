@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}الرحلات الجديدة من تطبيق السائق - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>🔔 الرحلات الجديدة من تطبيق السائق</h2>
+    <p style="color:#718096; margin-bottom:20px; font-size:14px;">
+        هذه هي الرحلات التي سجّلها السائقون من الحوال ولم يتم الاطلاع عليها بعد
+    </p>
+    
+    {% if pending_trips %}
+    <div style="margin-bottom:20px;">
+        <button onclick="markAllSeen()" class="btn btn-success" style="max-width:300px;">
+            ✓ تعليم الكل كمقروء
+        </button>
+    </div>
+    
+    {% for trip in pending_trips %}
+    <div style="background:#fff5f5; padding:20px; border-radius:12px; margin-bottom:15px; border-right:5px solid #e53e3e; box-shadow:0 2px 8px rgba(0,0,0,0.06);" id="trip-{{ trip.id }}">
+        
+        <!-- معلومات الرحلة الأساسية -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 15px;">
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">التاريخ</div>
+                <div style="font-weight:700; color:#1e3a5f;">{{ trip.trip_date }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">السائق</div>
+                <div style="font-weight:700; color:#1e3a5f;">👤 {{ trip.driver_name }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">السيارة</div>
+                <div style="font-weight:700; color:#1e3a5f;">🚗 {{ trip.car_name }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">الوجهة</div>
+                <div style="font-weight:700; color:#1e3a5f;">📍 {{ trip.destination or '—' }}</div>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 15px;">
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">وقت البدء</div>
+                <div style="font-weight:700; color:#1e3a5f;">🕐 {{ trip.start_time or '—' }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">عداد البداية</div>
+                <div style="font-weight:700; color:#1e3a5f;">🔢 {{ trip.start_km or '—' }} كم</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">الجهة الطالبة</div>
+                <div style="font-weight:700; color:#1e3a5f;">🏢 {{ trip.party_name or trip.requester or '—' }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">الحالة</div>
+                <div style="font-weight:700; color:#d69e2e;">🟡 الرحلة لا تزال نشطة (لم تنته بعد)</div>
+            </div>
+        </div>
+        
+        <!-- 🆕 صندوق "تم الفحص اليومي" -->
+        {% if trip.daily_check_info %}
+        <div style="background: linear-gradient(135deg, #c6f6d5 0%, #9ae6b4 100%); padding:15px; border-radius:10px; border-right:4px solid #38a169; margin-bottom:15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <div style="font-weight:700; color:#22543d; font-size:15px; margin-bottom:6px;">
+                        ✅ تم الفحص اليومي لهذه السيارة
+                    </div>
+                    <div style="font-size:13px; color:#22543d;">
+                        👤 من: <strong>{{ trip.daily_check_info.driver_name }}</strong>
+                        &nbsp;|&nbsp;
+                        🕐 الساعة: <strong>{{ trip.daily_check_info.check_time }}</strong>
+                        &nbsp;|&nbsp;
+                        📅 التاريخ: <strong>{{ trip.daily_check_info.check_date }}</strong>
+                    </div>
+                    {% if trip.daily_check_info.has_issue == 1 %}
+                    <div style="margin-top:8px; font-size:13px; color:#c53030; font-weight:700;">
+                        ⚠️ يوجد عطل مُبلّغ عنه في هذا الفحص
+                    </div>
+                    {% endif %}
+                </div>
+                <a href="/daily_checks/view/{{ trip.daily_check_info.id }}" 
+                   class="btn btn-success" 
+                   style="padding:8px 15px; font-size:13px; white-space:nowrap;">
+                    👁️ عرض التفاصيل
+                </a>
+            </div>
+        </div>
+        {% else %}
+        <div style="background: #fefcbf; padding:12px 15px; border-radius:10px; border-right:4px solid #d69e2e; margin-bottom:15px;">
+            <div style="font-weight:700; color:#744210; font-size:14px;">
+                ⚠️ ما تم فحص هذه السيارة اليوم
+            </div>
+            <div style="font-size:12px; color:#975a16; margin-top:4px;">
+                السائق بدأ الرحلة بدون إكمال الفحص اليومي
+            </div>
+        </div>
+        {% endif %}
+        
+        <!-- صور العداد -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+            {% if trip.start_image %}
+            <a href="/uploads/{{ trip.start_image }}" target="_blank" style="text-decoration:none;">
+                <div style="text-align:center;">
+                    <img src="/uploads/{{ trip.start_image }}" 
+                         style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:2px solid #1e3a5f; cursor:pointer;" 
+                         alt="صورة بداية الرحلة">
+                    <div style="font-size:11px; color:#718096; margin-top:4px;">📷 صورة البداية</div>
+                </div>
+            </a>
+            {% endif %}
+            {% if trip.end_image %}
+            <a href="/uploads/{{ trip.end_image }}" target="_blank" style="text-decoration:none;">
+                <div style="text-align:center;">
+                    <img src="/uploads/{{ trip.end_image }}" 
+                         style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:2px solid #38a169; cursor:pointer;" 
+                         alt="صورة نهاية الرحلة">
+                    <div style="font-size:11px; color:#718096; margin-top:4px;">📷 صورة النهاية</div>
+                </div>
+            </a>
+            {% endif %}
+        </div>
+        
+        <!-- أزرار الإجراءات -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <a href="/trips/edit/{{ trip.id }}" 
+               class="btn btn-primary" 
+               style="padding:10px 20px; font-size:14px;">
+                ✏️ عرض / تعديل
+            </a>
+            <button onclick="markSeen({{ trip.id }})" 
+                    class="btn btn-success" 
+                    style="padding:10px 20px; font-size:14px;">
+                ✓ تم الاطلاع
+            </button>
+        </div>
+        
+    </div>
+    {% endfor %}
+    
+    {% else %}
+    <div style="text-align:center; padding:50px 20px;">
+        <div style="font-size:60px; margin-bottom:15px;">✓</div>
+        <div style="font-size:18px; font-weight:700; color:#38a169; margin-bottom:8px;">
+            لا توجد رحلات جديدة
+        </div>
+        <div style="color:#718096; font-size:14px;">
+            تم الاطلاع على كل الرحلات من تطبيق السائق
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+function markSeen(tripId) {
+    if (!confirm('هل أنت متأكد من تعليم الرحلة كمقروءة؟')) return;
+    
+    fetch(`/admin/pending/mark_seen/${tripId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            const tripEl = document.getElementById(`trip-${tripId}`);
+            if (tripEl) {
+                tripEl.style.transition = 'all 0.5s';
+                tripEl.style.opacity = '0';
+                tripEl.style.transform = 'translateX(-50px)';
+                setTimeout(() => {
+                    tripEl.remove();
+                    // إذا ما بقي رحلات، أظهر رسالة "لا توجد رحلات"
+                    const remaining = document.querySelectorAll('[id^="trip-"]').length;
+                    if (remaining === 0) {
+                        location.reload();
+                    }
+                }, 500);
+            }
+        } else {
+            alert('❌ حدث خطأ: ' + (data.error || 'غير معروف'));
+        }
+    })
+    .catch(err => {
+        alert('❌ فشل الاتصال بالسيرفر');
+        console.error(err);
+    });
+}
+
+function markAllSeen() {
+    if (!confirm('هل أنت متأكد من تعليم كل الرحلات كمقروءة؟')) return;
+    
+    fetch('/admin/pending/mark_all_seen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('❌ حدث خطأ: ' + (data.error || 'غير معروف'));
+        }
+    })
+    .catch(err => {
+        alert('❌ فشل الاتصال بالسيرفر');
+        console.error(err);
+    });
+}
+</script>
+
+{% endblock %}
