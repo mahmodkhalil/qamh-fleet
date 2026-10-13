@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+
+{% block title %}تقرير الفحوصات اليومية - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>📊 تقرير الفحوصات اليومية</h2>
+    
+    <form method="GET" action="/reports/daily_checks" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>🚗 السيارة</label>
+                <select name="car_id">
+                    <option value="">-- كل السيارات --</option>
+                    {% for car in cars %}
+                    <option value="{{ car.id }}" {% if car.id|string == selected_car %}selected{% endif %}>{{ car.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>👤 السائق</label>
+                <select name="driver_id">
+                    <option value="">-- كل السائقين --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}" {% if driver.id|string == selected_driver %}selected{% endif %}>{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label>📅 من تاريخ</label>
+                <input type="date" name="date_from" value="{{ date_from or '' }}">
+            </div>
+        </div>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label>📅 إلى تاريخ</label>
+                <input type="date" name="date_to" value="{{ date_to or '' }}">
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <div style="display: flex; gap: 5px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">🔍 عرض</button>
+                    <a href="/reports/daily_checks" class="btn btn-secondary">🔄</a>
+                    <a href="/reports/daily_checks/export?date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}" class="btn btn-success">📥 Excel</a>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+{% if has_filter and summary %}
+<div class="stats-grid">
+    <div class="stat-box">
+        <div class="number">{{ summary.total_checks }}</div>
+        <div class="label">📋 إجمالي الفحوصات</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #e53e3e;">
+        <div class="number">{{ summary.with_issue }}</div>
+        <div class="label">⚠️ فحوصات فيها عطل</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #38a169;">
+        <div class="number">{{ summary.total_checks - summary.with_issue }}</div>
+        <div class="label">✅ فحوصات سليمة</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #553c9a;">
+        <div class="number">{{ summary.by_car|length }}</div>
+        <div class="label">🚗 عدد السيارات</div>
+    </div>
+</div>
+
+<!-- ملخص حسب السيارة -->
+{% if summary.by_car %}
+<div class="card">
+    <h2>🚗 ملخص حسب السيارة</h2>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>السيارة</th>
+                    <th>عدد الفحوصات</th>
+                    <th>فحوصات فيها عطل</th>
+                    <th>نسبة الأعطال</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for car_name, data in summary.by_car.items() %}
+                <tr>
+                    <td><strong>{{ car_name }}</strong></td>
+                    <td>{{ data.count }}</td>
+                    <td>
+                        {% if data.with_issue > 0 %}
+                        <span style="background:#fed7d7; color:#742a2a; padding:4px 10px; border-radius:6px; font-weight:700;">{{ data.with_issue }}</span>
+                        {% else %}
+                        <span style="color:#38a169; font-weight:700;">0</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if data.count > 0 %}
+                        {% set pct = (data.with_issue / data.count * 100)|round(1) %}
+                        <span style="font-weight:700; color:{% if pct > 50 %}#e53e3e{% elif pct > 20 %}#d69e2e{% else %}#38a169{% endif %};">
+                            {{ pct }}%
+                        </span>
+                        {% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- ملخص حسب السائق -->
+{% if summary.by_driver %}
+<div class="card">
+    <h2>👤 ملخص حسب السائق</h2>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>السائق</th>
+                    <th>عدد الفحوصات</th>
+                    <th>فحوصات فيها عطل</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for driver_name, data in summary.by_driver.items() %}
+                <tr>
+                    <td><strong>{{ driver_name }}</strong></td>
+                    <td>{{ data.count }}</td>
+                    <td>
+                        {% if data.with_issue > 0 %}
+                        <span style="background:#fed7d7; color:#742a2a; padding:4px 10px; border-radius:6px; font-weight:700;">{{ data.with_issue }}</span>
+                        {% else %}
+                        <span style="color:#38a169; font-weight:700;">0</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- قائمة الفحوصات -->
+<div class="card">
+    <h2>📋 تفاصيل الفحوصات ({{ checks|length }})</h2>
+    {% if checks %}
+    <div style="overflow-x: auto;">
+        <table style="font-size: 12px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>التاريخ</th>
+                    <th>الوقت</th>
+                    <th>السيارة</th>
+                    <th>السائق</th>
+                    <th>العداد</th>
+                    <th>زيت</th>
+                    <th>راديتور</th>
+                    <th>إطارات</th>
+                    <th>بطارية</th>
+                    <th>قشاطات</th>
+                    <th>الحالة</th>
+                    <th>إجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dc in checks %}
+                <tr {% if dc.has_issue == 1 %}style="background:#fff5f5;"{% endif %}>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ dc.check_date }}</td>
+                    <td>{{ dc.check_time }}</td>
+                    <td><strong>{{ dc.car_name }}</strong></td>
+                    <td>{{ dc.driver_name }}</td>
+                    <td>{{ dc.km_at_check or '—' }}</td>
+                    <td style="text-align:center; font-size:16px;">{% if dc.oil_checked %}✅{% else %}⬜{% endif %}</td>
+                    <td style="text-align:center; font-size:16px;">{% if dc.radiator_checked %}✅{% else %}⬜{% endif %}</td>
+                    <td style="text-align:center; font-size:16px;">{% if dc.tires_checked %}✅{% else %}⬜{% endif %}</td>
+                    <td style="text-align:center; font-size:16px;">{% if dc.battery_checked %}✅{% else %}⬜{% endif %}</td>
+                    <td style="text-align:center; font-size:16px;">{% if dc.belts_checked %}✅{% else %}⬜{% endif %}</td>
+                    <td>
+                        {% if dc.has_issue == 1 %}
+                        <span style="background:#fed7d7;color:#742a2a;padding:3px 8px;border-radius:6px;font-weight:700;font-size:11px;">⚠️ عطل</span>
+                        {% else %}
+                        <span style="background:#c6f6d5;color:#22543d;padding:3px 8px;border-radius:6px;font-weight:700;font-size:11px;">✅ سليم</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="/daily_checks/view/{{ dc.id }}" class="btn btn-primary" style="padding:3px 8px; font-size:11px;">👁️</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد فحوصات مطابقة للفلتر.</p>
+    {% endif %}
+</div>
+{% elif has_filter %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد فحوصات مطابقة للفلتر.</p>
+</div>
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">👆 اختر الفلاتر واضغط "عرض" لعرض التقرير.</p>
+</div>
+{% endif %}
+
+{% endblock %}
