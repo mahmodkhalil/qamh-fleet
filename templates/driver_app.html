@@ -44,6 +44,31 @@
         .status-online { background: #38a169; color: white; }
         .status-offline { background: #e53e3e; color: white; }
 
+        /* قسم التنبيهات الحرجة */
+        .critical-alerts-box {
+            background: #fed7d7;
+            color: #742a2a;
+            padding: 15px;
+            border-radius: 10px;
+            border-right: 5px solid #e53e3e;
+            margin-bottom: 15px;
+            box-shadow: 0 2px 8px rgba(229, 62, 62, 0.15);
+        }
+        .critical-alerts-box .alerts-title {
+            font-weight: 700;
+            font-size: 15px;
+            margin-bottom: 10px;
+        }
+        .critical-alerts-box .alert-item {
+            font-size: 14px;
+            margin-bottom: 6px;
+            padding-right: 8px;
+            border-right: 3px solid #fc8181;
+        }
+        .critical-alerts-box .alert-item:last-child {
+            margin-bottom: 0;
+        }
+
         .card {
             background: white;
             border-radius: 14px;
@@ -72,7 +97,8 @@
             margin-right: 3px;
         }
         .form-group select,
-        .form-group input {
+        .form-group input,
+        .form-group textarea {
             width: 100%;
             padding: 14px;
             border: 2px solid #cbd5e0;
@@ -82,8 +108,13 @@
             background: white;
             transition: border 0.2s;
         }
+        .form-group textarea {
+            resize: vertical;
+            min-height: 70px;
+        }
         .form-group select:focus,
-        .form-group input:focus {
+        .form-group input:focus,
+        .form-group textarea:focus {
             outline: none;
             border-color: #1e3a5f;
             box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.1);
@@ -121,7 +152,7 @@
         .image-upload {
             border: 3px dashed #cbd5e0;
             border-radius: 12px;
-            padding: 25px;
+            padding: 20px;
             text-align: center;
             cursor: pointer;
             transition: all 0.2s;
@@ -132,12 +163,12 @@
         .image-upload:active { background: #edf2f7; border-color: #1e3a5f; }
         .image-upload.has-image { border-style: solid; border-color: #38a169; padding: 10px; }
         .image-upload.error { border-color: #e53e3e; background: #fff5f5; }
-        .image-upload .icon { font-size: 42px; margin-bottom: 10px; }
-        .image-upload .text { color: #718096; font-size: 14px; font-weight: 600; }
+        .image-upload .icon { font-size: 32px; margin-bottom: 8px; }
+        .image-upload .text { color: #718096; font-size: 13px; font-weight: 600; }
         .image-upload input[type="file"] { display: none; }
         .image-upload img {
             max-width: 100%;
-            max-height: 250px;
+            max-height: 200px;
             border-radius: 8px;
             display: block;
             margin: 0 auto;
@@ -248,6 +279,98 @@
         }
         .range-warning.show { display: block; }
         .range-warning .hint { font-size: 12px; color: #975a16; margin-top: 4px; font-weight: 400; }
+
+        /* صندوق "تم الفحص من X" */
+        .last-check-box {
+            background: linear-gradient(135deg, #c6f6d5 0%, #9ae6b4 100%);
+            color: #22543d;
+            padding: 18px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+            border-right: 5px solid #38a169;
+        }
+        .last-check-box h3 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+        .last-check-box .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            font-size: 14px;
+            border-bottom: 1px solid rgba(56, 161, 105, 0.2);
+        }
+        .last-check-box .info-row:last-child { border-bottom: none; }
+        .last-check-box .info-label { opacity: 0.85; }
+        .last-check-box .info-value { font-weight: 700; }
+        .last-check-box .notes-box {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-size: 13px;
+            color: #4a5568;
+        }
+        .last-check-box .images-box {
+            margin-top: 10px;
+        }
+        .last-check-box .images-box img {
+            max-width: 80px;
+            max-height: 80px;
+            border-radius: 6px;
+            margin-left: 5px;
+            cursor: pointer;
+            border: 2px solid white;
+        }
+
+        /* الفحص اليومي - البنود */
+        .daily-check-item {
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 12px;
+            border: 2px solid #e2e8f0;
+            transition: all 0.2s;
+        }
+        .daily-check-item.checked {
+            background: #f0fff4;
+            border-color: #38a169;
+        }
+        .daily-check-item .check-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 10px;
+            cursor: pointer;
+        }
+        .daily-check-item input[type="checkbox"] {
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+            accent-color: #38a169;
+        }
+        .daily-check-item .check-label {
+            font-weight: 700;
+            color: #1e3a5f;
+            font-size: 15px;
+            flex: 1;
+        }
+        .daily-check-item textarea {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #cbd5e0;
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 14px;
+            resize: vertical;
+            min-height: 50px;
+            margin-bottom: 8px;
+        }
+        .daily-check-item textarea:focus {
+            outline: none;
+            border-color: #1e3a5f;
+        }
     </style>
 </head>
 <body>
@@ -259,6 +382,9 @@
 </div>
 
 <div class="container">
+
+    <!-- التنبيهات الحرجة -->
+    <div id="criticalAlertsBox" class="hidden"></div>
 
     <div id="alertBox"></div>
 
@@ -311,11 +437,11 @@
         <div class="card">
             <h2>🏁 إنهاء الرحلة</h2>
             <div class="form-group">
-                <label>صورة العداد (النهاية) <span class="required-star">*</span></label>
+                <label>صورة العداد (النهاية) — اختياري</label>
                 <div class="image-upload" id="endImageUpload" onclick="document.getElementById('endImageInput').click()">
                     <div class="icon">📷</div>
                     <div class="text">اضغط لتصوير العداد</div>
-                    <input type="file" id="endImageInput" accept="image/*" capture="environment">
+                    <input type="file" id="endImageInput" accept="image/*">
                 </div>
             </div>
             <div class="form-group">
@@ -334,6 +460,100 @@
         </div>
     </div>
 
+    <!-- شاشة الفحص اليومي -->
+    <div id="dailyCheckScreen" class="hidden">
+        <div class="card">
+            <h2>🔧 الفحص اليومي للسيارة</h2>
+            <div style="background:#fffaf0; padding:12px; border-radius:8px; margin-bottom:15px; font-size:13px; color:#744210; border-right:4px solid #d69e2e;">
+                ⚠️ هذه السيارة ما انفحصت اليوم. الرجاء إكمال الفحص اليومي قبل بدء الرحلة.
+            </div>
+
+            <div class="form-group">
+                <label>قراءة العداد الحالية (اختياري)</label>
+                <input type="number" id="checkKm" step="0.1" placeholder="مثال: 45000" inputmode="decimal">
+            </div>
+
+            <div class="daily-check-item" id="check-oil">
+                <div class="check-header" onclick="toggleCheck('oil')">
+                    <input type="checkbox" id="oil_checked" onclick="event.stopPropagation(); toggleCheck('oil')">
+                    <span class="check-label">🛢️ فحص زيت المحرك</span>
+                </div>
+                <textarea id="oil_notes" placeholder="ملاحظات على زيت المحرك (اختياري)"></textarea>
+                <div class="image-upload" id="oil_image_upload" onclick="document.getElementById('oil_image_input').click()">
+                    <div class="icon">📷</div>
+                    <div class="text">إرفاق صورة (اختياري)</div>
+                    <input type="file" id="oil_image_input" accept="image/*" onchange="handleCheckImage(event, 'oil')">
+                </div>
+            </div>
+
+            <div class="daily-check-item" id="check-radiator">
+                <div class="check-header" onclick="toggleCheck('radiator')">
+                    <input type="checkbox" id="radiator_checked" onclick="event.stopPropagation(); toggleCheck('radiator')">
+                    <span class="check-label">💧 فحص ماء الراديتور</span>
+                </div>
+                <textarea id="radiator_notes" placeholder="ملاحظات على ماء الراديتور (اختياري)"></textarea>
+                <div class="image-upload" id="radiator_image_upload" onclick="document.getElementById('radiator_image_input').click()">
+                    <div class="icon">📷</div>
+                    <div class="text">إرفاق صورة (اختياري)</div>
+                    <input type="file" id="radiator_image_input" accept="image/*" onchange="handleCheckImage(event, 'radiator')">
+                </div>
+            </div>
+
+            <div class="daily-check-item" id="check-tires">
+                <div class="check-header" onclick="toggleCheck('tires')">
+                    <input type="checkbox" id="tires_checked" onclick="event.stopPropagation(); toggleCheck('tires')">
+                    <span class="check-label">🛞 فحص الإطارات</span>
+                </div>
+                <textarea id="tires_notes" placeholder="ملاحظات على الإطارات (اختياري)"></textarea>
+                <div class="image-upload" id="tires_image_upload" onclick="document.getElementById('tires_image_input').click()">
+                    <div class="icon">📷</div>
+                    <div class="text">إرفاق صورة (اختياري)</div>
+                    <input type="file" id="tires_image_input" accept="image/*" onchange="handleCheckImage(event, 'tires')">
+                </div>
+            </div>
+
+            <div class="daily-check-item" id="check-battery">
+                <div class="check-header" onclick="toggleCheck('battery')">
+                    <input type="checkbox" id="battery_checked" onclick="event.stopPropagation(); toggleCheck('battery')">
+                    <span class="check-label">🔋 فحص البطارية</span>
+                </div>
+                <textarea id="battery_notes" placeholder="ملاحظات على البطارية (اختياري)"></textarea>
+                <div class="image-upload" id="battery_image_upload" onclick="document.getElementById('battery_image_input').click()">
+                    <div class="icon">📷</div>
+                    <div class="text">إرفاق صورة (اختياري)</div>
+                    <input type="file" id="battery_image_input" accept="image/*" onchange="handleCheckImage(event, 'battery')">
+                </div>
+            </div>
+
+            <div class="daily-check-item" id="check-belts">
+                <div class="check-header" onclick="toggleCheck('belts')">
+                    <input type="checkbox" id="belts_checked" onclick="event.stopPropagation(); toggleCheck('belts')">
+                    <span class="check-label">🔗 فحص القشاطات (بالنظر)</span>
+                </div>
+                <textarea id="belts_notes" placeholder="ملاحظات على القشاطات (اختياري)"></textarea>
+                <div class="image-upload" id="belts_image_upload" onclick="document.getElementById('belts_image_input').click()">
+                    <div class="icon">📷</div>
+                    <div class="text">إرفاق صورة (اختياري)</div>
+                    <input type="file" id="belts_image_input" accept="image/*" onchange="handleCheckImage(event, 'belts')">
+                </div>
+            </div>
+
+            <div class="form-group" style="margin-top:20px;">
+                <label>📝 ملاحظات عامة (اختياري)</label>
+                <textarea id="general_check_notes" placeholder="أي ملاحظات إضافية..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600;">
+                    <input type="checkbox" id="has_issue" style="width:20px; height:20px; accent-color:#e53e3e;">
+                    <span>⚠️ يوجد عطل يحتاج انتباه</span>
+                </label>
+            </div>
+
+            <button class="btn btn-success" id="submitCheckBtn" onclick="submitDailyCheck()">💾 حفظ الفحص والمتابعة</button>
+        </div>
+    </div>
+
     <!-- شاشة بدء رحلة جديدة -->
     <div id="newTripScreen" class="hidden">
         <div class="card">
@@ -343,6 +563,9 @@
                 <div style="font-size: 14px; color: #718096; margin-top: 4px;">سيارة: <span id="welcomeCarName" style="font-weight: 600; color: #2c5282;">-</span></div>
             </div>
             <h2>🚀 بدء رحلة جديدة</h2>
+
+            <!-- صندوق "تم الفحص من X" -->
+            <div id="lastCheckBox" class="hidden"></div>
 
             <div class="form-group">
                 <label>الوجهة <span class="required-star">*</span></label>
@@ -357,11 +580,11 @@
             </div>
 
             <div class="form-group">
-                <label>صورة العداد (البداية) <span class="required-star">*</span></label>
+                <label>صورة العداد (البداية) — اختياري</label>
                 <div class="image-upload" id="startImageUpload" onclick="document.getElementById('startImageInput').click()">
                     <div class="icon">📷</div>
                     <div class="text">اضغط لتصوير العداد</div>
-                    <input type="file" id="startImageInput" accept="image/*" capture="environment">
+                    <input type="file" id="startImageInput" accept="image/*">
                 </div>
             </div>
 
@@ -406,6 +629,14 @@ let currentCar = null;
 let currentActiveTrip = null;
 let startImageData = null;
 let endImageData = null;
+let currentDriverId = null;
+let checkImagesData = {
+    oil: null,
+    radiator: null,
+    tires: null,
+    battery: null,
+    belts: null
+};
 
 // ============== التهيئة ==============
 document.addEventListener('DOMContentLoaded', () => {
@@ -433,6 +664,24 @@ function showAlert(message, type = 'info') {
     alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+// عرض التنبيهات الحرجة
+function renderCriticalAlerts(alerts) {
+    const box = document.getElementById('criticalAlertsBox');
+    if (!alerts || alerts.length === 0) {
+        box.classList.add('hidden');
+        box.innerHTML = '';
+        return;
+    }
+    let html = '<div class="critical-alerts-box">';
+    html += '<div class="alerts-title">🚨 تنبيهات حرجة — صيانة متأخرة</div>';
+    alerts.forEach(a => {
+        html += `<div class="alert-item">⚠️ السيارة <strong>${a.car_name}</strong>: ${a.message}</div>`;
+    });
+    html += '</div>';
+    box.innerHTML = html;
+    box.classList.remove('hidden');
+}
+
 // ============== تحميل الحالة المحفوظة ==============
 function loadSavedIdentity() {
     const savedDriverId = localStorage.getItem('driver_id');
@@ -455,6 +704,11 @@ async function loadInitData(savedDriverId, savedCarId) {
             return;
         }
         
+        // عرض التنبيهات الحرجة
+        if (data.alerts) {
+            renderCriticalAlerts(data.alerts);
+        }
+        
         const driverSelect = document.getElementById('driverSelect');
         driverSelect.innerHTML = '<option value="">-- اختر السائق --</option>';
         data.drivers.forEach(d => {
@@ -473,7 +727,7 @@ async function loadInitData(savedDriverId, savedCarId) {
             carSelect.appendChild(opt);
         });
         
-        // 🆕 تحميل الجهات الطالبة
+        // تحميل الجهات الطالبة
         const partySelect = document.getElementById('requestingPartySelect');
         if (partySelect && data.parties) {
             partySelect.innerHTML = '<option value="">-- اختر الجهة الطالبة --</option>';
@@ -492,7 +746,8 @@ async function loadInitData(savedDriverId, savedCarId) {
             if (driver && car) {
                 currentDriver = driver;
                 currentCar = car;
-                checkActiveTrip();
+                currentDriverId = driver.id;
+                checkDailyCheckNeeded();
                 return;
             }
         }
@@ -510,6 +765,7 @@ function showScreen(screen) {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('activeTripScreen').classList.add('hidden');
     document.getElementById('newTripScreen').classList.add('hidden');
+    document.getElementById('dailyCheckScreen').classList.add('hidden');
     
     if (screen === 'login') {
         document.getElementById('loginScreen').classList.remove('hidden');
@@ -520,6 +776,9 @@ function showScreen(screen) {
     } else if (screen === 'new') {
         document.getElementById('newTripScreen').classList.remove('hidden');
         document.getElementById('bottomNav').style.display = 'flex';
+    } else if (screen === 'daily_check') {
+        document.getElementById('dailyCheckScreen').classList.remove('hidden');
+        document.getElementById('bottomNav').style.display = 'none';
     }
 }
 
@@ -545,9 +804,9 @@ function changeIdentity() {
     }
 }
 
-// ============== فحص الرحلة النشطة ==============
-async function checkActiveTrip() {
-    if (!currentDriver) return;
+// ============== فحص الفحص اليومي ==============
+async function checkDailyCheckNeeded() {
+    if (!currentCar) return;
     
     try {
         const response = await fetch(`/api/driver/active_trip/${currentDriver.id}`);
@@ -557,16 +816,191 @@ async function checkActiveTrip() {
             currentActiveTrip = data.trip;
             displayActiveTrip(data.trip);
             showScreen('active');
+            return;
+        }
+    } catch (error) {
+        console.error('خطأ في فحص الرحلة النشطة:', error);
+    }
+    
+    try {
+        const checkRes = await fetch(`/api/driver/last_check/${currentCar.id}`);
+        const checkData = await checkRes.json();
+        
+        if (checkData.success && checkData.needs_check) {
+            displayNewTripScreen();
+            showScreen('daily_check');
+            setActiveNav('navNewTrip');
+        } else if (checkData.success && checkData.last_check) {
+            displayLastCheckBox(checkData.last_check);
+            displayNewTripScreen();
+            showScreen('new');
+            setActiveNav('navNewTrip');
+            loadRecentTrips();
         } else {
             displayNewTripScreen();
             showScreen('new');
+            setActiveNav('navNewTrip');
             loadRecentTrips();
         }
     } catch (error) {
-        showAlert('فشل الاتصال: ' + error.message, 'error');
+        console.error('خطأ في فحص الفحص اليومي:', error);
+        displayNewTripScreen();
+        showScreen('new');
+        setActiveNav('navNewTrip');
+        loadRecentTrips();
     }
 }
 
+// عرض صندوق "تم الفحص من X"
+function displayLastCheckBox(lastCheck) {
+    const box = document.getElementById('lastCheckBox');
+    
+    let html = '<div class="last-check-box">';
+    html += '<h3>✅ تم فحص هذه السيارة مسبقاً</h3>';
+    html += `<div class="info-row"><span class="info-label">👤 السائق:</span><span class="info-value">${lastCheck.driver_name}</span></div>`;
+    html += `<div class="info-row"><span class="info-label">🕐 الساعة:</span><span class="info-value">${lastCheck.check_time}</span></div>`;
+    html += `<div class="info-row"><span class="info-label">📅 التاريخ:</span><span class="info-value">${lastCheck.check_date}</span></div>`;
+    
+    if (lastCheck.has_issue == 1) {
+        html += `<div class="info-row"><span class="info-label">⚠️ الحالة:</span><span class="info-value" style="color:#e53e3e;">يوجد عطل</span></div>`;
+    }
+    
+    if (lastCheck.general_notes) {
+        html += `<div class="notes-box"><strong>📝 ملاحظات الفحص:</strong><br>${lastCheck.general_notes}</div>`;
+    }
+    
+    const images = ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image'];
+    const imageLabels = {oil_image: 'زيت', radiator_image: 'راديتور', tires_image: 'إطارات', battery_image: 'بطارية', belts_image: 'قشاطات'};
+    const hasImages = images.some(img => lastCheck[img]);
+    
+    if (hasImages) {
+        html += '<div class="images-box"><strong style="font-size:13px;">📷 صور الأعطال:</strong><br>';
+        images.forEach(imgField => {
+            if (lastCheck[imgField]) {
+                const imgUrl = `/uploads/${lastCheck[imgField]}`;
+                html += `<img src="${imgUrl}" alt="${imageLabels[imgField]}" onclick="window.open('${imgUrl}', '_blank')" style="max-width:80px; max-height:80px; border-radius:6px; margin-left:5px; margin-top:5px; cursor:pointer; border:2px solid white;" onerror="this.style.display='none'">`;
+            }
+        });
+        html += '</div>';
+    }
+    
+    html += '</div>';
+    box.innerHTML = html;
+    box.classList.remove('hidden');
+}
+
+// ============== الفحص اليومي ==============
+function toggleCheck(field) {
+    const checkbox = document.getElementById(field + '_checked');
+    checkbox.checked = !checkbox.checked;
+    const item = document.getElementById('check-' + field);
+    if (checkbox.checked) {
+        item.classList.add('checked');
+    } else {
+        item.classList.remove('checked');
+    }
+}
+
+function handleCheckImage(event, field) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        compressImage(e.target.result, 800, 0.7, function(compressedData) {
+            checkImagesData[field] = compressedData;
+            
+            const upload = document.getElementById(field + '_image_upload');
+            upload.classList.add('has-image');
+            upload.innerHTML = `
+                <img src="${compressedData}" alt="صورة ${field}">
+                <div class="text" style="color: #38a169; margin-top: 8px;">✓ تم الرفع - اضغط للتغيير</div>
+                <input type="file" id="${field}_image_input" accept="image/*" onchange="handleCheckImage(event, '${field}')">
+            `;
+        });
+    };
+    reader.readAsDataURL(file);
+}
+
+async function submitDailyCheck() {
+    if (!currentDriver || !currentCar) {
+        showAlert('خطأ: السائق أو السيارة غير محدد', 'error');
+        return;
+    }
+    
+    const btn = document.getElementById('submitCheckBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
+    
+    try {
+        const payload = {
+            car_id: currentCar.id,
+            driver_id: currentDriver.id,
+            km_at_check: document.getElementById('checkKm').value || null,
+            oil_checked: document.getElementById('oil_checked').checked,
+            radiator_checked: document.getElementById('radiator_checked').checked,
+            tires_checked: document.getElementById('tires_checked').checked,
+            battery_checked: document.getElementById('battery_checked').checked,
+            belts_checked: document.getElementById('belts_checked').checked,
+            oil_notes: document.getElementById('oil_notes').value || '',
+            radiator_notes: document.getElementById('radiator_notes').value || '',
+            tires_notes: document.getElementById('tires_notes').value || '',
+            battery_notes: document.getElementById('battery_notes').value || '',
+            belts_notes: document.getElementById('belts_notes').value || '',
+            general_notes: document.getElementById('general_check_notes').value || '',
+            has_issue: document.getElementById('has_issue').checked,
+            oil_image: checkImagesData.oil,
+            radiator_image: checkImagesData.radiator,
+            tires_image: checkImagesData.tires,
+            battery_image: checkImagesData.battery,
+            belts_image: checkImagesData.belts
+        };
+        
+        const response = await fetch('/api/driver/daily_check', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showAlert('✓ تم حفظ الفحص اليومي بنجاح', 'success');
+            document.getElementById('checkKm').value = '';
+            document.getElementById('oil_notes').value = '';
+            document.getElementById('radiator_notes').value = '';
+            document.getElementById('tires_notes').value = '';
+            document.getElementById('battery_notes').value = '';
+            document.getElementById('belts_notes').value = '';
+            document.getElementById('general_check_notes').value = '';
+            document.getElementById('has_issue').checked = false;
+            ['oil', 'radiator', 'tires', 'battery', 'belts'].forEach(f => {
+                document.getElementById(f + '_checked').checked = false;
+                document.getElementById('check-' + f).classList.remove('checked');
+                document.getElementById(f + '_image_upload').classList.remove('has-image');
+                document.getElementById(f + '_image_upload').innerHTML = `
+                    <div class="icon">📷</div>
+                    <div class="text">إرفاق صورة (اختياري)</div>
+                    <input type="file" id="${f}_image_input" accept="image/*" onchange="handleCheckImage(event, '${f}')">
+                `;
+                checkImagesData[f] = null;
+            });
+            
+            setTimeout(() => {
+                checkDailyCheckNeeded();
+            }, 800);
+        } else {
+            showAlert('❌ ' + data.error, 'error');
+        }
+    } catch (error) {
+        showAlert('فشل الاتصال: ' + error.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '💾 حفظ الفحص والمتابعة';
+    }
+}
+
+// ============== عرض الرحلة النشطة ==============
 function displayActiveTrip(trip) {
     document.getElementById('activeDriverName').textContent = currentDriver.name;
     document.getElementById('activeCarName').textContent = trip.car_name;
@@ -631,7 +1065,7 @@ function handleImageSelect(event, uploadId, type) {
             upload.innerHTML = `
                 <img src="${compressedData}" alt="صورة العداد">
                 <div class="text" style="color: #38a169; margin-top: 8px;">✓ تم التصوير - اضغط للتغيير</div>
-                <input type="file" id="${type}ImageInput" accept="image/*" capture="environment">
+                <input type="file" id="${type}ImageInput" accept="image/*">
             `;
             
             document.getElementById(`${type}ImageInput`).addEventListener('change', function(e) {
@@ -674,25 +1108,14 @@ async function startTrip() {
     const startKm = startKmInput.value;
     const startUpload = document.getElementById('startImageUpload');
     
-    // تنظيف الأخطاء
     startKmInput.classList.remove('error');
     startUpload.classList.remove('error');
     
-    // ✅ التحقق: الوجهة
     if (!destination) {
         showAlert('⚠️ الرجاء إدخال الوجهة', 'error');
         return;
     }
     
-    // ✅ التحقق: صورة العداد إلزامية
-    if (!startImageData) {
-        startUpload.classList.add('error');
-        showAlert('⚠️ الرجاء تصوير العداد أولاً', 'error');
-        startUpload.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-    }
-    
-    // ✅ التحقق: العداد إلزامي
     if (!startKm || startKm.trim() === '') {
         startKmInput.classList.add('error');
         showAlert('⚠️ الرجاء إدخال قراءة العداد', 'error');
@@ -700,13 +1123,20 @@ async function startTrip() {
         return;
     }
     
-    // ✅ التحقق: العداد رقم صحيح وأكبر من صفر
     const startKmNum = parseFloat(startKm);
     if (isNaN(startKmNum) || startKmNum <= 0) {
         startKmInput.classList.add('error');
         showAlert('⚠️ قراءة العداد يجب أن تكون رقماً أكبر من صفر', 'error');
         startKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
+    }
+    
+    if (!startImageData) {
+        const confirmed = confirm('⚠️ ما رفقت صورة العداد.\n\nهل أنت متأكد من المتابعة بدون صورة؟');
+        if (!confirmed) {
+            startUpload.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
     }
     
     const btn = document.getElementById('startTripBtn');
@@ -722,7 +1152,7 @@ async function startTrip() {
                 car_id: currentCar.id,
                 destination: destination,
                 start_km: startKmNum,
-                start_image: startImageData,
+                start_image: startImageData || '',
                 requesting_party_id: requestingPartyId
             })
         });
@@ -740,13 +1170,13 @@ async function startTrip() {
             upload.innerHTML = `
                 <div class="icon">📷</div>
                 <div class="text">اضغط لتصوير العداد</div>
-                <input type="file" id="startImageInput" accept="image/*" capture="environment">
+                <input type="file" id="startImageInput" accept="image/*">
             `;
             document.getElementById('startImageInput').addEventListener('change', function(e) {
                 handleImageSelect(e, 'startImageUpload', 'start');
             });
             
-            setTimeout(() => checkActiveTrip(), 800);
+            setTimeout(() => checkDailyCheckNeeded(), 800);
         } else {
             showAlert('❌ ' + data.error, 'error');
         }
@@ -767,13 +1197,6 @@ async function endTrip() {
     
     endKmInput.classList.remove('error');
     endUpload.classList.remove('error');
-    
-    if (!endImageData) {
-        endUpload.classList.add('error');
-        showAlert('⚠️ الرجاء تصوير العداد النهائي', 'error');
-        endUpload.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        return;
-    }
     
     if (!endKm || endKm.trim() === '') {
         endKmInput.classList.add('error');
@@ -799,6 +1222,14 @@ async function endTrip() {
         return;
     }
     
+    if (!endImageData) {
+        const confirmed = confirm('⚠️ ما رفقت صورة العداد النهائي.\n\nهل أنت متأكد من المتابعة بدون صورة؟');
+        if (!confirmed) {
+            endUpload.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+    }
+    
     if (!confirm('هل أنت متأكد من إنهاء الرحلة؟')) return;
     
     const btn = document.getElementById('endTripBtn');
@@ -812,7 +1243,7 @@ async function endTrip() {
             body: JSON.stringify({
                 trip_id: currentActiveTrip.id,
                 end_km: endKmNum,
-                end_image: endImageData,
+                end_image: endImageData || '',
                 notes: notes
             })
         });
@@ -827,7 +1258,7 @@ async function endTrip() {
                 document.getElementById('endKm').value = '';
                 document.getElementById('endNotes').value = '';
                 document.getElementById('rangeWarning').classList.remove('show');
-                checkActiveTrip();
+                checkDailyCheckNeeded();
             }, 1200);
         } else {
             showAlert('❌ ' + data.error, 'error');
@@ -877,15 +1308,23 @@ async function loadRecentTrips() {
 
 // ============== التنقل السفلي ==============
 function showNewTrip() {
-    checkActiveTrip();
+    checkDailyCheckNeeded();
     setActiveNav('navNewTrip');
 }
 
 function refreshData() {
     setActiveNav('navRefresh');
     if (currentActiveTrip) {
-        checkActiveTrip();
+        checkDailyCheckNeeded();
     } else {
+        fetch('/api/driver/alerts')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    renderCriticalAlerts(data.alerts);
+                }
+            })
+            .catch(err => console.log('خطأ:', err));
         loadRecentTrips();
         showAlert('✓ تم التحديث', 'success');
     }
@@ -896,12 +1335,20 @@ function setActiveNav(id) {
     document.getElementById(id).classList.add('active');
 }
 
-// تحديث تلقائي كل 30 ثانية
+// تحديث تلقائي كل 60 ثانية
 setInterval(() => {
     if (currentDriver && !currentActiveTrip) {
         loadRecentTrips();
+        fetch('/api/driver/alerts')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    renderCriticalAlerts(data.alerts);
+                }
+            })
+            .catch(err => console.log('خطأ:', err));
     }
-}, 30000);
+}, 60000);
 
 </script>
 

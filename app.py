@@ -374,6 +374,128 @@ def get_requesting_parties(active_only=True, conn=None):
     return parties
 
 
+# 🆕 ============== دوال الفحص اليومي ==============
+
+def get_last_daily_check(car_id, conn=None):
+    """
+    ترجع آخر فحص يومي للسيارة (خلال 24 ساعة).
+    ترجع None إذا ما في فحص حديث.
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    cursor = conn.cursor()
+    execute_query(cursor, """
+        SELECT dc.*, d.name as driver_name
+        FROM daily_checks dc
+        JOIN drivers d ON dc.driver_id = d.id
+        WHERE dc.car_id = ?
+        ORDER BY dc.id DESC
+        LIMIT 1
+    """, (car_id,))
+    check = cursor.fetchone()
+    if close_conn:
+        conn.close()
+    if not check:
+        return None
+    try:
+        check_datetime = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        try:
+            check_datetime = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M")
+        except:
+            return None
+    hours_since = (datetime.now() - check_datetime).total_seconds() / 3600
+    if hours_since < 24:
+        return dict(check)
+    return None
+
+
+def needs_daily_check(car_id, conn=None):
+    """
+    ترجع True إذا السيارة تحتاج فحص يومي جديد.
+    """
+    last_check = get_last_daily_check(car_id, conn)
+    return last_check is None
+
+
+def ensure_daily_checks_table():
+    """
+    إنشاء جدول الفحص اليومي إذا ما موجود.
+    """
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        if is_postgres():
+            execute_query(cursor, """
+                CREATE TABLE IF NOT EXISTS daily_checks (
+                    id SERIAL PRIMARY KEY,
+                    check_date TEXT NOT NULL,
+                    check_time TEXT NOT NULL,
+                    car_id INTEGER NOT NULL,
+                    driver_id INTEGER NOT NULL,
+                    km_at_check REAL,
+                    oil_checked INTEGER DEFAULT 0,
+                    radiator_checked INTEGER DEFAULT 0,
+                    tires_checked INTEGER DEFAULT 0,
+                    battery_checked INTEGER DEFAULT 0,
+                    belts_checked INTEGER DEFAULT 0,
+                    oil_notes TEXT,
+                    radiator_notes TEXT,
+                    tires_notes TEXT,
+                    battery_notes TEXT,
+                    belts_notes TEXT,
+                    oil_image TEXT,
+                    radiator_image TEXT,
+                    tires_image TEXT,
+                    battery_image TEXT,
+                    belts_image TEXT,
+                    general_notes TEXT,
+                    admin_notes TEXT,
+                    has_issue INTEGER DEFAULT 0,
+                    created_at TEXT
+                )
+            """)
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS daily_checks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    check_date TEXT NOT NULL,
+                    check_time TEXT NOT NULL,
+                    car_id INTEGER NOT NULL,
+                    driver_id INTEGER NOT NULL,
+                    km_at_check REAL,
+                    oil_checked INTEGER DEFAULT 0,
+                    radiator_checked INTEGER DEFAULT 0,
+                    tires_checked INTEGER DEFAULT 0,
+                    battery_checked INTEGER DEFAULT 0,
+                    belts_checked INTEGER DEFAULT 0,
+                    oil_notes TEXT,
+                    radiator_notes TEXT,
+                    tires_notes TEXT,
+                    battery_notes TEXT,
+                    belts_notes TEXT,
+                    oil_image TEXT,
+                    radiator_image TEXT,
+                    tires_image TEXT,
+                    battery_image TEXT,
+                    belts_image TEXT,
+                    general_notes TEXT,
+                    admin_notes TEXT,
+                    has_issue INTEGER DEFAULT 0,
+                    created_at TEXT
+                )
+            """)
+        conn.commit()
+        conn.close()
+        print("✓ جدول daily_checks جاهز")
+        return True
+    except Exception as e:
+        print(f"⚠ خطأ في ensure_daily_checks_table: {e}")
+        return False
+
+
 def ensure_trips_columns():
     try:
         conn = get_connection()
@@ -508,6 +630,7 @@ def ensure_all_tables():
 
 
 ensure_all_tables()
+ensure_daily_checks_table()
 ensure_trips_columns()
 migrate_requesting_parties()
 
@@ -1021,6 +1144,100 @@ def toggle_requesting_party(party_id):
     return redirect(url_for('requesting_parties'))
 
 
+# ============== الفحص اليومي (للمسؤول) ==============
+
+@app.route('/daily_checks')
+@login_required
+def daily_checks_list():
+    """صفحة عرض كل الفحوصات اليومية"""
+    date_from = request.args.get('date_from') or ''
+    date_to = request.args.get('date_to') or ''
+    car_id = request.args.get('car_id') or ''
+    driver_id = request.args.get('driver_id') or ''
+    conn = get_connection()
+    cursor = conn.cursor()
+    execute_query(cursor, "SELECT * FROM cars ORDER BY name")
+    cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers ORDER BY name")
+    drivers_list = cursor.fetchall()
+    query = """
+        SELECT dc.*, c.name as car_name, d.name as driver_name
+        FROM daily_checks dc
+        JOIN cars c ON dc.car_id = c.id
+        JOIN drivers d ON dc.driver_id = d.id
+        WHERE 1=1
+    """
+    params = []
+    if date_from:
+        query += " AND dc.check_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND dc.check_date <= ?"
+        params.append(date_to)
+    if car_id:
+        query += " AND dc.car_id = ?"
+        params.append(car_id)
+    if driver_id:
+        query += " AND dc.driver_id = ?"
+        params.append(driver_id)
+    query += " ORDER BY dc.id DESC"
+    execute_query(cursor, query, params)
+    checks = cursor.fetchall()
+    total_checks = len(checks)
+    checks_with_issue = len([c for c in checks if c['has_issue'] == 1])
+    conn.close()
+    return render_template('daily_checks.html',
+                         checks=checks,
+                         cars=cars_list,
+                         drivers=drivers_list,
+                         total_checks=total_checks,
+                         checks_with_issue=checks_with_issue,
+                         selected_car=car_id,
+                         selected_driver=driver_id,
+                         date_from=date_from,
+                         date_to=date_to,
+                         has_filter=bool(car_id or driver_id or date_from or date_to))
+
+
+@app.route('/daily_checks/view/<int:check_id>')
+@login_required
+def daily_check_view(check_id):
+    """عرض تفاصيل فحص يومي"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    execute_query(cursor, """
+        SELECT dc.*, c.name as car_name, d.name as driver_name
+        FROM daily_checks dc
+        JOIN cars c ON dc.car_id = c.id
+        JOIN drivers d ON dc.driver_id = d.id
+        WHERE dc.id = ?
+    """, (check_id,))
+    check = cursor.fetchone()
+    conn.close()
+    if not check:
+        flash('الفحص غير موجود', 'error')
+        return redirect(url_for('daily_checks_list'))
+    return render_template('daily_check_view.html', check=check)
+
+
+@app.route('/daily_checks/edit/<int:check_id>', methods=['POST'])
+@admin_required
+def daily_check_edit(check_id):
+    """حفظ تعديلات المسؤول على الفحص"""
+    admin_notes = request.form.get('admin_notes', '')
+    has_issue = 1 if request.form.get('has_issue') else 0
+    conn = get_connection()
+    cursor = conn.cursor()
+    execute_query(cursor, "UPDATE daily_checks SET admin_notes=?, has_issue=? WHERE id=?",
+                  (admin_notes, has_issue, check_id))
+    conn.commit()
+    conn.close()
+    flash('تم حفظ التعديلات', 'success')
+    return redirect(url_for('daily_check_view', check_id=check_id))
+
+
+# ============== السائقين ==============
+
 @app.route('/drivers')
 @login_required
 def drivers():
@@ -1219,6 +1436,8 @@ def delete_overtime(o_id):
     return redirect(url_for('drivers'))
 
 
+# ============== الوقود ==============
+
 @app.route('/fuel')
 @login_required
 def fuel():
@@ -1313,6 +1532,8 @@ def delete_fuel(fuel_id):
     flash('تم حذف التعبئة', 'success')
     return redirect(url_for('fuel'))
 
+
+# ============== الصيانة ==============
 
 @app.route('/maintenance')
 @login_required
@@ -1430,6 +1651,8 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
+# ============== التقارير الشهرية ==============
+
 @app.route('/reports')
 @login_required
 def reports():
@@ -1532,6 +1755,22 @@ def reports():
             overtime_params.append(driver_id)
         execute_query(cursor, query_overtime, overtime_params)
         all_overtime = cursor.fetchall()
+        query_checks = """
+            SELECT dc.*, c.name as car_name, d.name as driver_name
+            FROM daily_checks dc
+            JOIN cars c ON dc.car_id = c.id
+            JOIN drivers d ON dc.driver_id = d.id
+            WHERE dc.check_date LIKE ?
+        """
+        checks_params = [month_str + '%']
+        if car_id:
+            query_checks += " AND dc.car_id = ?"
+            checks_params.append(car_id)
+        if driver_id:
+            query_checks += " AND dc.driver_id = ?"
+            checks_params.append(driver_id)
+        execute_query(cursor, query_checks, checks_params)
+        all_checks = cursor.fetchall()
         cars_report = []
         total_trips = len(all_trips)
         total_km = sum(t['distance'] or 0 for t in all_trips)
@@ -1550,12 +1789,13 @@ def reports():
         if car_id:
             car_list = [c for c in cars_list if str(c['id']) == str(car_id)]
         else:
-            car_ids_with_data = set(t['car_id'] for t in all_trips) | set(f['car_id'] for f in all_fuel) | set(m['car_id'] for m in all_maint)
+            car_ids_with_data = set(t['car_id'] for t in all_trips) | set(f['car_id'] for f in all_fuel) | set(m['car_id'] for m in all_maint) | set(dc['car_id'] for dc in all_checks)
             car_list = [c for c in cars_list if c['id'] in car_ids_with_data]
         for c in car_list:
             c_trips = [t for t in all_trips if t['car_id'] == c['id']]
             c_fuel = [f for f in all_fuel if f['car_id'] == c['id']]
             c_maint = [m for m in all_maint if m['car_id'] == c['id']]
+            c_checks = [dc for dc in all_checks if dc['car_id'] == c['id']]
             car_fuel_cost = 0
             for f in c_fuel:
                 car_fuel_cost += get_effective_cost(f)
@@ -1577,6 +1817,8 @@ def reports():
                 c_trips_with_cost.append(t_dict)
             cars_report.append({
                 'car_name': c['name'], 'trips': c_trips_with_cost, 'fuel': c_fuel, 'maintenance': c_maint,
+                'checks': c_checks,
+                'checks_count': len(c_checks),
                 'total_km': c_total_km,
                 'total_liters': sum(f['liters'] or 0 for f in c_fuel),
                 'total_fuel_cost': car_fuel_cost,
@@ -1609,12 +1851,13 @@ def reports():
         if driver_id:
             drivers_to_report = [d for d in drivers_list if str(d['id']) == str(driver_id)]
         else:
-            driver_ids_with_data = set(tm['driver_id'] for tm in all_travel) | set(o['driver_id'] for o in all_overtime) | set(t['driver_id'] for t in all_trips)
+            driver_ids_with_data = set(tm['driver_id'] for tm in all_travel) | set(o['driver_id'] for o in all_overtime) | set(t['driver_id'] for t in all_trips) | set(dc['driver_id'] for dc in all_checks)
             drivers_to_report = [d for d in drivers_list if d['id'] in driver_ids_with_data]
         for d in drivers_to_report:
             d_travel = [tm for tm in all_travel if tm['driver_id'] == d['id']]
             d_overtime = [o for o in all_overtime if o['driver_id'] == d['id']]
             d_trips = [t for t in all_trips if t['driver_id'] == d['id']]
+            d_checks = [dc for dc in all_checks if dc['driver_id'] == d['id']]
             d_travel_count = len([tm for tm in d_travel if tm['is_travel'] == 1])
             d_travel_km = sum(tm['distance_km'] or 0 for tm in d_travel if tm['is_travel'] == 1)
             d_morning = sum(o['morning_hours'] or 0 for o in d_overtime)
@@ -1624,6 +1867,8 @@ def reports():
                 'travel_missions': d_travel,
                 'overtimes': d_overtime,
                 'trips': d_trips,
+                'checks': d_checks,
+                'checks_count': len(d_checks),
                 'travel_count': d_travel_count,
                 'travel_km': d_travel_km,
                 'morning_hours': d_morning,
@@ -1636,6 +1881,7 @@ def reports():
                 'total_trips': total_trips, 'total_km': total_km,
                 'total_liters': total_liters, 'total_fuel_cost': total_cost,
                 'total_maint_cost': total_maint_cost,
+                'total_checks': len(all_checks),
                 'gasoline_liters': gasoline_liters, 'diesel_liters': diesel_liters,
                 'gasoline_cost': gasoline_cost, 'diesel_cost': diesel_cost,
                 'tank_liters': tank_liters, 'station_liters': station_liters,
@@ -1904,6 +2150,76 @@ def reports_requesting_parties():
                          has_filter=bool(party_id or date_from or date_to))
 
 
+@app.route('/reports/daily_checks')
+@login_required
+def reports_daily_checks():
+    """تقرير الفحوصات اليومية"""
+    date_from = request.args.get('date_from') or ''
+    date_to = request.args.get('date_to') or ''
+    car_id = request.args.get('car_id') or ''
+    driver_id = request.args.get('driver_id') or ''
+    conn = get_connection()
+    cursor = conn.cursor()
+    execute_query(cursor, "SELECT * FROM cars ORDER BY name")
+    cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers ORDER BY name")
+    drivers_list = cursor.fetchall()
+    query = """
+        SELECT dc.*, c.name as car_name, d.name as driver_name
+        FROM daily_checks dc
+        JOIN cars c ON dc.car_id = c.id
+        JOIN drivers d ON dc.driver_id = d.id
+        WHERE 1=1
+    """
+    params = []
+    if date_from:
+        query += " AND dc.check_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND dc.check_date <= ?"
+        params.append(date_to)
+    if car_id:
+        query += " AND dc.car_id = ?"
+        params.append(car_id)
+    if driver_id:
+        query += " AND dc.driver_id = ?"
+        params.append(driver_id)
+    query += " ORDER BY dc.id DESC"
+    execute_query(cursor, query, params)
+    checks = cursor.fetchall()
+    by_car = {}
+    for dc in checks:
+        if dc['car_name'] not in by_car:
+            by_car[dc['car_name']] = {'count': 0, 'with_issue': 0}
+        by_car[dc['car_name']]['count'] += 1
+        if dc['has_issue'] == 1:
+            by_car[dc['car_name']]['with_issue'] += 1
+    by_driver = {}
+    for dc in checks:
+        if dc['driver_name'] not in by_driver:
+            by_driver[dc['driver_name']] = {'count': 0, 'with_issue': 0}
+        by_driver[dc['driver_name']]['count'] += 1
+        if dc['has_issue'] == 1:
+            by_driver[dc['driver_name']]['with_issue'] += 1
+    summary = {
+        'total_checks': len(checks),
+        'with_issue': len([dc for dc in checks if dc['has_issue'] == 1]),
+        'by_car': by_car,
+        'by_driver': by_driver,
+    }
+    conn.close()
+    return render_template('reports_daily_checks.html',
+                         checks=checks,
+                         cars=cars_list,
+                         drivers=drivers_list,
+                         summary=summary,
+                         selected_car=car_id,
+                         selected_driver=driver_id,
+                         date_from=date_from,
+                         date_to=date_to,
+                         has_filter=bool(car_id or driver_id or date_from or date_to))
+
+
 @app.route('/reports/fuel')
 @login_required
 def reports_fuel():
@@ -2057,6 +2373,8 @@ def reports_maintenance():
                          has_filter=bool(car_id or date_from or date_to or mtype or category))
 
 
+# ============== Excel Exports ==============
+
 @app.route('/reports/export')
 @login_required
 def export_excel():
@@ -2154,6 +2472,22 @@ def export_excel():
         overtime_params.append(driver_id)
     execute_query(cursor, query_overtime, overtime_params)
     overtimes = cursor.fetchall()
+    query_checks = """
+        SELECT dc.*, c.name as car_name, d.name as driver_name
+        FROM daily_checks dc
+        JOIN cars c ON dc.car_id = c.id
+        JOIN drivers d ON dc.driver_id = d.id
+        WHERE dc.check_date LIKE ?
+    """
+    checks_params = [month_str + '%']
+    if car_id:
+        query_checks += " AND dc.car_id = ?"
+        checks_params.append(car_id)
+    if driver_id:
+        query_checks += " AND dc.driver_id = ?"
+        checks_params.append(driver_id)
+    execute_query(cursor, query_checks, checks_params)
+    checks = cursor.fetchall()
     conn.close()
     wb = Workbook()
     ws = wb.active
@@ -2245,6 +2579,30 @@ def export_excel():
     for col in ws5.columns:
         max_length = max(len(str(cell.value or '')) for cell in col)
         ws5.column_dimensions[col[0].column_letter].width = max_length + 3
+    ws6 = wb.create_sheet(f"Daily Checks {month_str}")
+    ws6.sheet_view.rightToLeft = True
+    headers6 = ['التاريخ', 'الوقت', 'السيارة', 'السائق', 'العداد', 'زيت المحرك', 'ماء الراديتور', 'الإطارات', 'البطارية', 'القشاطات', 'ملاحظات السائق', 'ملاحظات المسؤول', 'فيه عطل؟']
+    ws6.append(headers6)
+    for cell in ws6[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    for dc in checks:
+        ws6.append([
+            dc['check_date'], dc['check_time'], dc['car_name'], dc['driver_name'],
+            dc['km_at_check'] or '',
+            '✓' if dc['oil_checked'] == 1 else '-',
+            '✓' if dc['radiator_checked'] == 1 else '-',
+            '✓' if dc['tires_checked'] == 1 else '-',
+            '✓' if dc['battery_checked'] == 1 else '-',
+            '✓' if dc['belts_checked'] == 1 else '-',
+            dc['general_notes'] or '',
+            dc['admin_notes'] or '',
+            'نعم' if dc['has_issue'] == 1 else 'لا'
+        ])
+    for col in ws6.columns:
+        max_length = max(len(str(cell.value or '')) for cell in col)
+        ws6.column_dimensions[col[0].column_letter].width = max_length + 3
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
@@ -2412,6 +2770,74 @@ def export_requesting_parties_excel():
     output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                      as_attachment=True, download_name='requesting_parties_report.xlsx')
+
+
+@app.route('/reports/daily_checks/export')
+@login_required
+def export_daily_checks_excel():
+    date_from = request.args.get('date_from') or ''
+    date_to = request.args.get('date_to') or ''
+    car_id = request.args.get('car_id') or ''
+    driver_id = request.args.get('driver_id') or ''
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT dc.*, c.name as car_name, d.name as driver_name
+        FROM daily_checks dc
+        JOIN cars c ON dc.car_id = c.id
+        JOIN drivers d ON dc.driver_id = d.id
+        WHERE 1=1
+    """
+    params = []
+    if date_from:
+        query += " AND dc.check_date >= ?"
+        params.append(date_from)
+    if date_to:
+        query += " AND dc.check_date <= ?"
+        params.append(date_to)
+    if car_id:
+        query += " AND dc.car_id = ?"
+        params.append(car_id)
+    if driver_id:
+        query += " AND dc.driver_id = ?"
+        params.append(driver_id)
+    query += " ORDER BY dc.id DESC"
+    execute_query(cursor, query, params)
+    checks = cursor.fetchall()
+    conn.close()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Daily Checks"
+    ws.sheet_view.rightToLeft = True
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
+    header_font = Font(color="FFFFFF", bold=True, size=12)
+    headers = ['التاريخ', 'الوقت', 'السيارة', 'السائق', 'العداد', 'زيت المحرك', 'ماء الراديتور', 'الإطارات', 'البطارية', 'القشاطات', 'ملاحظات السائق', 'ملاحظات المسؤول', 'فيه عطل؟']
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+    for dc in checks:
+        ws.append([
+            dc['check_date'], dc['check_time'], dc['car_name'], dc['driver_name'],
+            dc['km_at_check'] or '',
+            '✓' if dc['oil_checked'] == 1 else '-',
+            '✓' if dc['radiator_checked'] == 1 else '-',
+            '✓' if dc['tires_checked'] == 1 else '-',
+            '✓' if dc['battery_checked'] == 1 else '-',
+            '✓' if dc['belts_checked'] == 1 else '-',
+            dc['general_notes'] or '',
+            dc['admin_notes'] or '',
+            'نعم' if dc['has_issue'] == 1 else 'لا'
+        ])
+    for col in ws.columns:
+        max_length = max(len(str(cell.value or '')) for cell in col)
+        ws.column_dimensions[col[0].column_letter].width = max_length + 3
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                     as_attachment=True, download_name='daily_checks_report.xlsx')
 
 
 @app.route('/reports/fuel/export')
@@ -2655,7 +3081,147 @@ def api_driver_init():
         execute_query(cursor, "SELECT id, name FROM requesting_parties WHERE active=1 ORDER BY name")
         parties_list = [dict(row) for row in cursor.fetchall()]
         conn.close()
-        return jsonify({'success': True, 'drivers': drivers_list, 'cars': cars_list, 'parties': parties_list})
+        # 🆕 التنبيهات الطارئة (صيانة متأخرة)
+        alerts = get_maintenance_alerts()
+        critical_alerts = [a for a in alerts if a['status'] == 'red']
+        return jsonify({
+            'success': True,
+            'drivers': drivers_list,
+            'cars': cars_list,
+            'parties': parties_list,
+            'alerts': critical_alerts
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# 🆕 ============== API التنبيهات الطارئة ==============
+
+@app.route('/api/driver/alerts', methods=['GET'])
+def api_driver_alerts():
+    """ترجع التنبيهات الحرجة لكل السائقين"""
+    try:
+        alerts = get_maintenance_alerts()
+        critical_alerts = [a for a in alerts if a['status'] == 'red']
+        return jsonify({'success': True, 'alerts': critical_alerts})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+# 🆕 ============== API الفحص اليومي ==============
+
+@app.route('/api/driver/last_check/<int:car_id>', methods=['GET'])
+def api_driver_last_check(car_id):
+    """
+    ترجع آخر فحص للسيارة (خلال 24 ساعة).
+    إذا ما في فحص حديث، ترجع needs_check=True.
+    """
+    try:
+        conn = get_connection()
+        last_check = get_last_daily_check(car_id, conn)
+        conn.close()
+        if last_check:
+            return jsonify({
+                'success': True,
+                'needs_check': False,
+                'last_check': {
+                    'id': last_check['id'],
+                    'check_date': last_check['check_date'],
+                    'check_time': last_check['check_time'],
+                    'driver_name': last_check['driver_name'],
+                    'general_notes': last_check['general_notes'] or '',
+                    'has_issue': last_check['has_issue'],
+                    'oil_image': last_check.get('oil_image'),
+                    'radiator_image': last_check.get('radiator_image'),
+                    'tires_image': last_check.get('tires_image'),
+                    'battery_image': last_check.get('battery_image'),
+                    'belts_image': last_check.get('belts_image'),
+                    'oil_notes': last_check.get('oil_notes') or '',
+                    'radiator_notes': last_check.get('radiator_notes') or '',
+                    'tires_notes': last_check.get('tires_notes') or '',
+                    'battery_notes': last_check.get('battery_notes') or '',
+                    'belts_notes': last_check.get('belts_notes') or '',
+                }
+            })
+        return jsonify({'success': True, 'needs_check': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/driver/daily_check', methods=['POST'])
+def api_driver_daily_check():
+    """حفظ الفحص اليومي من تطبيق السائق"""
+    try:
+        data = request.get_json()
+        car_id = data.get('car_id')
+        driver_id = data.get('driver_id')
+        km_at_check = data.get('km_at_check') or None
+        general_notes = data.get('general_notes', '')
+        has_issue = 1 if data.get('has_issue') else 0
+        
+        if not car_id or not driver_id:
+            return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
+        
+        # حفظ الصور
+        images = {}
+        for field in ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image']:
+            img_b64 = data.get(field, '')
+            if img_b64 and len(img_b64) > 100:
+                try:
+                    if ',' in img_b64:
+                        img_b64 = img_b64.split(',', 1)[1]
+                    img_data = base64.b64decode(img_b64)
+                    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    filename = f"check_{field}_{car_id}_{driver_id}_{timestamp}.jpg"
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    with open(filepath, 'wb') as f:
+                        f.write(img_data)
+                    images[field] = filename
+                except Exception as e:
+                    print(f"⚠ خطأ في حفظ {field}: {e}")
+                    images[field] = None
+            else:
+                images[field] = None
+        
+        now = datetime.now() + timedelta(hours=3)
+        check_date = now.strftime('%Y-%m-%d')
+        check_time = now.strftime('%H:%M:%S')
+        created_at = now.strftime('%Y-%m-%d %H:%M:%S')
+        
+        conn = get_connection()
+        cursor = conn.cursor()
+        execute_query(cursor, """
+            INSERT INTO daily_checks 
+            (check_date, check_time, car_id, driver_id, km_at_check,
+             oil_checked, radiator_checked, tires_checked, battery_checked, belts_checked,
+             oil_notes, radiator_notes, tires_notes, battery_notes, belts_notes,
+             oil_image, radiator_image, tires_image, battery_image, belts_image,
+             general_notes, has_issue, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            check_date, check_time, car_id, driver_id, km_at_check,
+            1 if data.get('oil_checked') else 0,
+            1 if data.get('radiator_checked') else 0,
+            1 if data.get('tires_checked') else 0,
+            1 if data.get('battery_checked') else 0,
+            1 if data.get('belts_checked') else 0,
+            data.get('oil_notes', ''),
+            data.get('radiator_notes', ''),
+            data.get('tires_notes', ''),
+            data.get('battery_notes', ''),
+            data.get('belts_notes', ''),
+            images.get('oil_image'), images.get('radiator_image'),
+            images.get('tires_image'), images.get('battery_image'),
+            images.get('belts_image'),
+            general_notes, has_issue, created_at
+        ))
+        conn.commit()
+        execute_query(cursor, "SELECT MAX(id) as max_id FROM daily_checks")
+        row = cursor.fetchone()
+        check_id = row['max_id'] if row else None
+        conn.close()
+        
+        return jsonify({'success': True, 'check_id': check_id, 'message': 'تم حفظ الفحص اليومي'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -2683,22 +3249,22 @@ def api_driver_start_trip():
                 return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
         except (ValueError, TypeError):
             return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
-        if not start_image_b64 or len(start_image_b64) < 100:
-            return jsonify({'success': False, 'error': 'صورة العداد إلزامية'}), 400
         
+        # الصورة اختيارية - نحفظها فقط إذا كانت موجودة
         start_image_filename = None
-        try:
-            if ',' in start_image_b64:
-                start_image_b64 = start_image_b64.split(',', 1)[1]
-            img_data = base64.b64decode(start_image_b64)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            start_image_filename = f"trip_start_{driver_id}_{car_id}_{timestamp}.jpg"
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], start_image_filename)
-            with open(filepath, 'wb') as f:
-                f.write(img_data)
-        except Exception as e:
-            print(f"خطأ في حفظ صورة البداية: {e}")
-            return jsonify({'success': False, 'error': 'فشل حفظ صورة العداد'}), 500
+        if start_image_b64 and len(start_image_b64) > 100:
+            try:
+                if ',' in start_image_b64:
+                    start_image_b64 = start_image_b64.split(',', 1)[1]
+                img_data = base64.b64decode(start_image_b64)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                start_image_filename = f"trip_start_{driver_id}_{car_id}_{timestamp}.jpg"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], start_image_filename)
+                with open(filepath, 'wb') as f:
+                    f.write(img_data)
+            except Exception as e:
+                print(f"⚠ خطأ في حفظ صورة البداية: {e}")
+                start_image_filename = None
         
         now = datetime.now() + timedelta(hours=3)
         trip_date = now.strftime('%Y-%m-%d')
@@ -2752,8 +3318,6 @@ def api_driver_end_trip():
                 return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
         except (ValueError, TypeError):
             return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
-        if not end_image_b64 or len(end_image_b64) < 100:
-            return jsonify({'success': False, 'error': 'صورة العداد النهائية إلزامية'}), 400
         
         conn = get_connection()
         cursor = conn.cursor()
@@ -2781,20 +3345,21 @@ def api_driver_end_trip():
             except (ValueError, TypeError):
                 distance = None
         
+        # الصورة اختيارية - نحفظها فقط إذا كانت موجودة
         end_image_filename = None
-        try:
-            if ',' in end_image_b64:
-                end_image_b64 = end_image_b64.split(',', 1)[1]
-            img_data = base64.b64decode(end_image_b64)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            end_image_filename = f"trip_end_{trip_id}_{timestamp}.jpg"
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], end_image_filename)
-            with open(filepath, 'wb') as f:
-                f.write(img_data)
-        except Exception as e:
-            print(f"خطأ في حفظ صورة النهاية: {e}")
-            conn.close()
-            return jsonify({'success': False, 'error': 'فشل حفظ صورة العداد'}), 500
+        if end_image_b64 and len(end_image_b64) > 100:
+            try:
+                if ',' in end_image_b64:
+                    end_image_b64 = end_image_b64.split(',', 1)[1]
+                img_data = base64.b64decode(end_image_b64)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                end_image_filename = f"trip_end_{trip_id}_{timestamp}.jpg"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], end_image_filename)
+                with open(filepath, 'wb') as f:
+                    f.write(img_data)
+            except Exception as e:
+                print(f"⚠ خطأ في حفظ صورة النهاية: {e}")
+                end_image_filename = None
         
         now = datetime.now() + timedelta(hours=3)
         end_time = now.strftime('%H:%M:%S')

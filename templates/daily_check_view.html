@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+
+{% block title %}تفاصيل الفحص - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
+{% block content %}
+
+<div class="card">
+    <h2>🔧 تفاصيل الفحص اليومي #{{ check.id }}</h2>
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+        <a href="/daily_checks" class="btn btn-secondary" style="max-width: 200px;">⬅️ العودة للقائمة</a>
+        {% if check.has_issue == 1 %}
+        <div style="background:#fed7d7; color:#742a2a; padding:10px 20px; border-radius:8px; font-weight:700; border-right:4px solid #e53e3e;">
+            ⚠️ يوجد عطل في هذا الفحص
+        </div>
+        {% else %}
+        <div style="background:#c6f6d5; color:#22543d; padding:10px 20px; border-radius:8px; font-weight:700; border-right:4px solid #38a169;">
+            ✅ الفحص سليم
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- معلومات عامة -->
+<div class="card">
+    <h2>📋 معلومات عامة</h2>
+    <div class="form-row-3">
+        <div style="background:#f7fafc; padding:15px; border-radius:8px;">
+            <div style="font-size:12px; color:#718096; margin-bottom:5px;">📅 التاريخ</div>
+            <div style="font-size:16px; font-weight:700; color:#1e3a5f;">{{ check.check_date }}</div>
+        </div>
+        <div style="background:#f7fafc; padding:15px; border-radius:8px;">
+            <div style="font-size:12px; color:#718096; margin-bottom:5px;">🕐 الوقت</div>
+            <div style="font-size:16px; font-weight:700; color:#1e3a5f;">{{ check.check_time }}</div>
+        </div>
+        <div style="background:#f7fafc; padding:15px; border-radius:8px;">
+            <div style="font-size:12px; color:#718096; margin-bottom:5px;">🚗 السيارة</div>
+            <div style="font-size:16px; font-weight:700; color:#1e3a5f;">{{ check.car_name }}</div>
+        </div>
+    </div>
+    
+    <div class="form-row-3" style="margin-top:15px;">
+        <div style="background:#f7fafc; padding:15px; border-radius:8px;">
+            <div style="font-size:12px; color:#718096; margin-bottom:5px;">👤 السائق</div>
+            <div style="font-size:16px; font-weight:700; color:#1e3a5f;">{{ check.driver_name }}</div>
+        </div>
+        <div style="background:#f7fafc; padding:15px; border-radius:8px;">
+            <div style="font-size:12px; color:#718096; margin-bottom:5px;">🔢 العداد</div>
+            <div style="font-size:16px; font-weight:700; color:#1e3a5f;">{{ check.km_at_check or '—' }} كم</div>
+        </div>
+        <div style="background:#f7fafc; padding:15px; border-radius:8px;">
+            <div style="font-size:12px; color:#718096; margin-bottom:5px;">🆔 رقم الفحص</div>
+            <div style="font-size:16px; font-weight:700; color:#1e3a5f;">#{{ check.id }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- بنود الفحص -->
+<div class="card">
+    <h2>🔍 بنود الفحص الخمسة</h2>
+    
+    <!-- زيت المحرك -->
+    <div style="background:{% if check.oil_checked %}#f0fff4{% else %}#f7fafc{% endif %}; padding:15px; border-radius:10px; margin-bottom:12px; border:2px solid {% if check.oil_checked %}#38a169{% else %}#e2e8f0{% endif %};">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+            <span style="font-size:24px;">{% if check.oil_checked %}✅{% else %}⬜{% endif %}</span>
+            <span style="font-weight:700; color:#1e3a5f; font-size:15px; flex:1;">🛢️ فحص زيت المحرك</span>
+            {% if check.oil_checked %}
+            <span style="background:#38a169; color:white; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">تم الفحص</span>
+            {% else %}
+            <span style="background:#cbd5e0; color:#4a5568; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">لم يُفحص</span>
+            {% endif %}
+        </div>
+        {% if check.oil_notes %}
+        <div style="background:white; padding:10px; border-radius:6px; font-size:13px; color:#4a5568; margin-top:8px;">
+            📝 <strong>ملاحظات السائق:</strong> {{ check.oil_notes }}
+        </div>
+        {% endif %}
+        {% if check.oil_image %}
+        <div style="margin-top:10px;">
+            <a href="/uploads/{{ check.oil_image }}" target="_blank">
+                <img src="/uploads/{{ check.oil_image }}" style="max-width:150px; max-height:150px; border-radius:8px; border:2px solid #38a169; cursor:pointer;" alt="صورة زيت المحرك">
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- ماء الراديتور -->
+    <div style="background:{% if check.radiator_checked %}#f0fff4{% else %}#f7fafc{% endif %}; padding:15px; border-radius:10px; margin-bottom:12px; border:2px solid {% if check.radiator_checked %}#38a169{% else %}#e2e8f0{% endif %};">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+            <span style="font-size:24px;">{% if check.radiator_checked %}✅{% else %}⬜{% endif %}</span>
+            <span style="font-weight:700; color:#1e3a5f; font-size:15px; flex:1;">💧 فحص ماء الراديتور</span>
+            {% if check.radiator_checked %}
+            <span style="background:#38a169; color:white; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">تم الفحص</span>
+            {% else %}
+            <span style="background:#cbd5e0; color:#4a5568; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">لم يُفحص</span>
+            {% endif %}
+        </div>
+        {% if check.radiator_notes %}
+        <div style="background:white; padding:10px; border-radius:6px; font-size:13px; color:#4a5568; margin-top:8px;">
+            📝 <strong>ملاحظات السائق:</strong> {{ check.radiator_notes }}
+        </div>
+        {% endif %}
+        {% if check.radiator_image %}
+        <div style="margin-top:10px;">
+            <a href="/uploads/{{ check.radiator_image }}" target="_blank">
+                <img src="/uploads/{{ check.radiator_image }}" style="max-width:150px; max-height:150px; border-radius:8px; border:2px solid #38a169; cursor:pointer;" alt="صورة ماء الراديتور">
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- الإطارات -->
+    <div style="background:{% if check.tires_checked %}#f0fff4{% else %}#f7fafc{% endif %}; padding:15px; border-radius:10px; margin-bottom:12px; border:2px solid {% if check.tires_checked %}#38a169{% else %}#e2e8f0{% endif %};">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+            <span style="font-size:24px;">{% if check.tires_checked %}✅{% else %}⬜{% endif %}</span>
+            <span style="font-weight:700; color:#1e3a5f; font-size:15px; flex:1;">🛞 فحص الإطارات</span>
+            {% if check.tires_checked %}
+            <span style="background:#38a169; color:white; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">تم الفحص</span>
+            {% else %}
+            <span style="background:#cbd5e0; color:#4a5568; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">لم يُفحص</span>
+            {% endif %}
+        </div>
+        {% if check.tires_notes %}
+        <div style="background:white; padding:10px; border-radius:6px; font-size:13px; color:#4a5568; margin-top:8px;">
+            📝 <strong>ملاحظات السائق:</strong> {{ check.tires_notes }}
+        </div>
+        {% endif %}
+        {% if check.tires_image %}
+        <div style="margin-top:10px;">
+            <a href="/uploads/{{ check.tires_image }}" target="_blank">
+                <img src="/uploads/{{ check.tires_image }}" style="max-width:150px; max-height:150px; border-radius:8px; border:2px solid #38a169; cursor:pointer;" alt="صورة الإطارات">
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- البطارية -->
+    <div style="background:{% if check.battery_checked %}#f0fff4{% else %}#f7fafc{% endif %}; padding:15px; border-radius:10px; margin-bottom:12px; border:2px solid {% if check.battery_checked %}#38a169{% else %}#e2e8f0{% endif %};">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+            <span style="font-size:24px;">{% if check.battery_checked %}✅{% else %}⬜{% endif %}</span>
+            <span style="font-weight:700; color:#1e3a5f; font-size:15px; flex:1;">🔋 فحص البطارية</span>
+            {% if check.battery_checked %}
+            <span style="background:#38a169; color:white; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">تم الفحص</span>
+            {% else %}
+            <span style="background:#cbd5e0; color:#4a5568; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">لم يُفحص</span>
+            {% endif %}
+        </div>
+        {% if check.battery_notes %}
+        <div style="background:white; padding:10px; border-radius:6px; font-size:13px; color:#4a5568; margin-top:8px;">
+            📝 <strong>ملاحظات السائق:</strong> {{ check.battery_notes }}
+        </div>
+        {% endif %}
+        {% if check.battery_image %}
+        <div style="margin-top:10px;">
+            <a href="/uploads/{{ check.battery_image }}" target="_blank">
+                <img src="/uploads/{{ check.battery_image }}" style="max-width:150px; max-height:150px; border-radius:8px; border:2px solid #38a169; cursor:pointer;" alt="صورة البطارية">
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- القشاطات -->
+    <div style="background:{% if check.belts_checked %}#f0fff4{% else %}#f7fafc{% endif %}; padding:15px; border-radius:10px; margin-bottom:12px; border:2px solid {% if check.belts_checked %}#38a169{% else %}#e2e8f0{% endif %};">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:10px;">
+            <span style="font-size:24px;">{% if check.belts_checked %}✅{% else %}⬜{% endif %}</span>
+            <span style="font-weight:700; color:#1e3a5f; font-size:15px; flex:1;">🔗 فحص القشاطات</span>
+            {% if check.belts_checked %}
+            <span style="background:#38a169; color:white; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">تم الفحص</span>
+            {% else %}
+            <span style="background:#cbd5e0; color:#4a5568; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700;">لم يُفحص</span>
+            {% endif %}
+        </div>
+        {% if check.belts_notes %}
+        <div style="background:white; padding:10px; border-radius:6px; font-size:13px; color:#4a5568; margin-top:8px;">
+            📝 <strong>ملاحظات السائق:</strong> {{ check.belts_notes }}
+        </div>
+        {% endif %}
+        {% if check.belts_image %}
+        <div style="margin-top:10px;">
+            <a href="/uploads/{{ check.belts_image }}" target="_blank">
+                <img src="/uploads/{{ check.belts_image }}" style="max-width:150px; max-height:150px; border-radius:8px; border:2px solid #38a169; cursor:pointer;" alt="صورة القشاطات">
+            </a>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- ملاحظات عامة -->
+    {% if check.general_notes %}
+    <div style="background:#fefcbf; padding:15px; border-radius:10px; margin-top:20px; border-right:4px solid #d69e2e;">
+        <div style="font-weight:700; color:#744210; margin-bottom:8px;">📝 ملاحظات عامة من السائق:</div>
+        <div style="color:#4a5568; font-size:14px; line-height:1.7;">{{ check.general_notes }}</div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- قسم تعديلات المسؤول -->
+{% if is_admin %}
+<div class="card">
+    <h2>✏️ ملاحظات المسؤول</h2>
+    <form method="POST" action="/daily_checks/edit/{{ check.id }}">
+        <div class="form-group">
+            <label>ملاحظات المسؤول</label>
+            <textarea name="admin_notes" rows="4" placeholder="أضف ملاحظاتك الإدارية على هذا الفحص...">{{ check.admin_notes or '' }}</textarea>
+        </div>
+        <div class="form-group">
+            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font-weight:600;">
+                <input type="checkbox" name="has_issue" style="width:20px; height:20px; accent-color:#e53e3e;" {% if check.has_issue == 1 %}checked{% endif %}>
+                <span>⚠️ تأكيد وجود عطل يحتاج متابعة</span>
+            </label>
+        </div>
+        <button type="submit" class="btn btn-success">💾 حفظ التعديلات</button>
+    </form>
+</div>
+{% elif check.admin_notes %}
+<div class="card">
+    <h2>✏️ ملاحظات المسؤول</h2>
+    <div style="background:#f7fafc; padding:15px; border-radius:8px; color:#4a5568; line-height:1.7;">
+        {{ check.admin_notes }}
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}

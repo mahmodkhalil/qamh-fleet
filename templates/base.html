@@ -298,7 +298,7 @@
             font-weight: 600;
         }
 
-        /* 🆕 إشعار الرحلات الجديدة */
+        /* إشعار الرحلات الجديدة */
         .pending-alert-bar {
             background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
             color: white;
@@ -344,7 +344,7 @@
             font-weight: 700;
         }
 
-        /* 🆕 شارة التنبيه جنب زر الرئيسية */
+        /* شارة التنبيه جنب زر الرئيسية */
         .menu-badge {
             background: #e53e3e;
             color: white;
@@ -400,6 +400,7 @@
         <a href="/cars">🚗 السيارات</a>
         <a href="/drivers">👤 السائقين</a>
         <a href="/requesting_parties">🏢 الجهات الطالبة</a>
+        <a href="/daily_checks">🔧 الفحوصات اليومية</a>
         <a href="/fuel">⛽ تعبئة الوقود</a>
         <a href="/maintenance">🔧 الصيانة</a>
         
@@ -409,6 +410,7 @@
                 <a href="/reports">📊 التقارير الشهرية</a>
                 <a href="/reports/trips">📋 تقرير الرحلات</a>
                 <a href="/reports/requesting_parties">🏢 تقرير الجهات الطالبة</a>
+                <a href="/reports/daily_checks">🔧 تقرير الفحوصات اليومية</a>
                 <a href="/reports/fuel">⛽ تقرير الوقود</a>
                 <a href="/reports/maintenance">🔧 تقرير الصيانة</a>
                 <a href="/reports/drivers">👤 تقرير السائقين</a>
@@ -444,21 +446,20 @@ window.onclick = function(event) {
     }
 }
 
-// 🆕 تحديث عدد الرحلات الجديدة كل 30 ثانية
+// تحديث عدد الرحلات الجديدة كل 30 ثانية
 {% if is_admin %}
 function checkPendingTrips() {
     fetch('/api/admin/pending_count')
         .then(res => res.json())
         .then(data => {
             if (data.success && data.count > 0) {
-                // تحديث الشارة في القائمة
                 const homeLink = document.querySelector('.menu > a[href="/"]');
                 if (homeLink) {
                     let badge = homeLink.querySelector('.menu-badge');
                     if (!badge) {
-                    badge = document.createElement('span');
-                    badge.className = 'menu-badge';
-                    homeLink.appendChild(badge);
+                        badge = document.createElement('span');
+                        badge.className = 'menu-badge';
+                        homeLink.appendChild(badge);
                     }
                     badge.textContent = data.count;
                 }
@@ -467,7 +468,6 @@ function checkPendingTrips() {
         .catch(err => console.log('خطأ في فحص الرحلات:', err));
 }
 
-// فحص دوري كل 30 ثانية
 setInterval(checkPendingTrips, 30000);
 {% endif %}
 </script>
