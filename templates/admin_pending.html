@@ -1,349 +1,194 @@
 {% extends "base.html" %}
-{% block title %}الرحلات الجديدة - نظام حركة سيارات قمح{% endblock %}
+
+{% block title %}الرحلات الجديدة من تطبيق السائق - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
 
 {% block content %}
 
-<style>
-    .pending-header {
-        background: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
-        color: white;
-        padding: 25px;
-        border-radius: 12px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 15px rgba(229, 62, 62, 0.3);
-    }
-    .pending-header h2 {
-        color: white !important;
-        border: none !important;
-        margin: 0 0 10px 0 !important;
-        padding: 0 !important;
-        font-size: 22px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: 10px;
-    }
-    .pending-count-badge {
-        background: white;
-        color: #c53030;
-        padding: 6px 16px;
-        border-radius: 20px;
-        font-size: 16px;
-        font-weight: 700;
-    }
-    .pending-header p {
-        margin: 0;
-        opacity: 0.95;
-        font-size: 14px;
-    }
-    .trip-card {
-        background: white;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 15px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
-        border-right: 4px solid #e53e3e;
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        gap: 20px;
-        align-items: center;
-        transition: all 0.2s;
-    }
-    .trip-card:hover {
-        box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-        transform: translateY(-2px);
-    }
-    @media (max-width: 900px) {
-        .trip-card { grid-template-columns: 1fr; }
-    }
-    .trip-thumbnails {
-        display: flex;
-        gap: 10px;
-        align-items: center;
-    }
-    .trip-thumb {
-        width: 100px;
-        height: 100px;
-        border-radius: 10px;
-        object-fit: cover;
-        cursor: pointer;
-        border: 2px solid #e2e8f0;
-        transition: all 0.2s;
-        background: #f7fafc;
-    }
-    .trip-thumb:hover {
-        transform: scale(1.05);
-        border-color: #1e3a5f;
-    }
-    .trip-thumb-placeholder {
-        width: 100px;
-        height: 100px;
-        border-radius: 10px;
-        background: #edf2f7;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 30px;
-        color: #cbd5e0;
-    }
-    .trip-info {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-        gap: 12px;
-    }
-    .info-item {
-        font-size: 13px;
-    }
-    .info-item .label {
-        color: #718096;
-        font-size: 11px;
-        text-transform: uppercase;
-        font-weight: 600;
-        margin-bottom: 3px;
-        display: block;
-    }
-    .info-item .value {
-        color: #1e3a5f;
-        font-weight: 700;
-        font-size: 15px;
-    }
-    .trip-actions {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    .btn-dismiss {
-        background: #38a169;
-        color: white;
-        padding: 10px 16px;
-        border-radius: 8px;
-        border: none;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 13px;
-        font-family: inherit;
-        transition: all 0.2s;
-        white-space: nowrap;
-    }
-    .btn-dismiss:hover {
-        background: #2f855a;
-    }
-    .btn-view {
-        background: #1e3a5f;
-        color: white;
-        padding: 10px 16px;
-        border-radius: 8px;
-        border: none;
-        cursor: pointer;
-        font-weight: 600;
-        font-size: 13px;
-        font-family: inherit;
-        text-decoration: none;
-        text-align: center;
-        transition: all 0.2s;
-        white-space: nowrap;
-    }
-    .btn-view:hover {
-        background: #2c5282;
-    }
-    .mark-all-bar {
-        text-align: center;
-        margin-bottom: 20px;
-    }
-    .btn-mark-all {
-        background: #38a169;
-        color: white;
-        padding: 12px 30px;
-        border-radius: 10px;
-        border: none;
-        cursor: pointer;
-        font-weight: 700;
-        font-size: 15px;
-        font-family: inherit;
-        transition: all 0.2s;
-        box-shadow: 0 2px 10px rgba(56, 161, 105, 0.3);
-    }
-    .btn-mark-all:hover {
-        background: #2f855a;
-        transform: translateY(-1px);
-    }
-    .no-pending {
-        text-align: center;
-        padding: 60px 20px;
-        color: #718096;
-    }
-    .no-pending .icon {
-        font-size: 60px;
-        margin-bottom: 15px;
-        display: block;
-    }
-    .no-pending .title {
-        font-size: 20px;
-        font-weight: 700;
-        color: #1e3a5f;
-        margin-bottom: 8px;
-    }
-    .modal-image-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(0,0,0,0.9);
-        z-index: 3000;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-        cursor: zoom-out;
-    }
-    .modal-image-overlay.show { display: flex; }
-    .modal-image-overlay img {
-        max-width: 95%;
-        max-height: 95vh;
-        border-radius: 8px;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-    }
-    .time-ago {
-        display: inline-block;
-        background: #fed7d7;
-        color: #c53030;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 11px;
-        font-weight: 700;
-        margin-right: 5px;
-    }
-</style>
-
-<div class="pending-header">
-    <h2>
-        <span>🔔 الرحلات الجديدة من تطبيق السائق</span>
-        {% if pending_trips %}
-        <span class="pending-count-badge">{{ pending_trips|length }} رحلة جديدة</span>
-        {% endif %}
-    </h2>
-    <p>هذه هي الرحلات التي سجّلها السائقون من الجوال ولم يتم الاطلاع عليها بعد</p>
-</div>
-
-{% if pending_trips %}
-<div class="mark-all-bar">
-    <button onclick="markAllSeen()" class="btn-mark-all">✓ تعليم الكل كمقروء</button>
-</div>
-
-{% for trip in pending_trips %}
-<div class="trip-card" id="trip-card-{{ trip['id'] }}">
-    <div class="trip-thumbnails">
-        {% if trip['start_image'] %}
-        <img src="/uploads/{{ trip['start_image'] }}" class="trip-thumb" alt="عداد البداية" onclick="viewImage(this.src)">
+<div class="card">
+    <h2>🔔 الرحلات الجديدة من تطبيق السائق</h2>
+    <p style="color:#718096; margin-bottom:20px; font-size:14px;">
+        هذه هي الرحلات التي سجّلها السائقون من الحوال ولم يتم الاطلاع عليها بعد
+    </p>
+    
+    {% if pending_trips %}
+    <div style="margin-bottom:20px;">
+        <button onclick="markAllSeen()" class="btn btn-success" style="max-width:300px;">
+            ✓ تعليم الكل كمقروء
+        </button>
+    </div>
+    
+    {% for trip in pending_trips %}
+    <div style="background:#fff5f5; padding:20px; border-radius:12px; margin-bottom:15px; border-right:5px solid #e53e3e; box-shadow:0 2px 8px rgba(0,0,0,0.06);" id="trip-{{ trip.id }}">
+        
+        <!-- معلومات الرحلة الأساسية -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 15px;">
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">التاريخ</div>
+                <div style="font-weight:700; color:#1e3a5f;">{{ trip.trip_date }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">السائق</div>
+                <div style="font-weight:700; color:#1e3a5f;">👤 {{ trip.driver_name }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">السيارة</div>
+                <div style="font-weight:700; color:#1e3a5f;">🚗 {{ trip.car_name }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">الوجهة</div>
+                <div style="font-weight:700; color:#1e3a5f;">📍 {{ trip.destination or '—' }}</div>
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 15px;">
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">وقت البدء</div>
+                <div style="font-weight:700; color:#1e3a5f;">🕐 {{ trip.start_time or '—' }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">عداد البداية</div>
+                <div style="font-weight:700; color:#1e3a5f;">🔢 {{ trip.start_km or '—' }} كم</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">الجهة الطالبة</div>
+                <div style="font-weight:700; color:#1e3a5f;">🏢 {{ trip.party_name or trip.requester or '—' }}</div>
+            </div>
+            <div>
+                <div style="font-size:12px; color:#718096; margin-bottom:4px;">الحالة</div>
+                <div style="font-weight:700; color:#d69e2e;">🟡 الرحلة لا تزال نشطة (لم تنته بعد)</div>
+            </div>
+        </div>
+        
+        <!-- 🆕 صندوق "تم الفحص اليومي" -->
+        {% if trip.daily_check_info %}
+        <div style="background: linear-gradient(135deg, #c6f6d5 0%, #9ae6b4 100%); padding:15px; border-radius:10px; border-right:4px solid #38a169; margin-bottom:15px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <div>
+                    <div style="font-weight:700; color:#22543d; font-size:15px; margin-bottom:6px;">
+                        ✅ تم الفحص اليومي لهذه السيارة
+                    </div>
+                    <div style="font-size:13px; color:#22543d;">
+                        👤 من: <strong>{{ trip.daily_check_info.driver_name }}</strong>
+                        &nbsp;|&nbsp;
+                        🕐 الساعة: <strong>{{ trip.daily_check_info.check_time }}</strong>
+                        &nbsp;|&nbsp;
+                        📅 التاريخ: <strong>{{ trip.daily_check_info.check_date }}</strong>
+                    </div>
+                    {% if trip.daily_check_info.has_issue == 1 %}
+                    <div style="margin-top:8px; font-size:13px; color:#c53030; font-weight:700;">
+                        ⚠️ يوجد عطل مُبلّغ عنه في هذا الفحص
+                    </div>
+                    {% endif %}
+                </div>
+                <a href="/daily_checks/view/{{ trip.daily_check_info.id }}" 
+                   class="btn btn-success" 
+                   style="padding:8px 15px; font-size:13px; white-space:nowrap;">
+                    👁️ عرض التفاصيل
+                </a>
+            </div>
+        </div>
         {% else %}
-        <div class="trip-thumb-placeholder">📷</div>
+        <div style="background: #fefcbf; padding:12px 15px; border-radius:10px; border-right:4px solid #d69e2e; margin-bottom:15px;">
+            <div style="font-weight:700; color:#744210; font-size:14px;">
+                ⚠️ ما تم فحص هذه السيارة اليوم
+            </div>
+            <div style="font-size:12px; color:#975a16; margin-top:4px;">
+                السائق بدأ الرحلة بدون إكمال الفحص اليومي
+            </div>
+        </div>
         {% endif %}
         
-        {% if trip['end_image'] %}
-        <img src="/uploads/{{ trip['end_image'] }}" class="trip-thumb" alt="عداد النهاية" onclick="viewImage(this.src)">
-        {% else %}
-        <div class="trip-thumb-placeholder">⏳</div>
-        {% endif %}
+        <!-- صور العداد -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
+            {% if trip.start_image %}
+            <a href="/uploads/{{ trip.start_image }}" target="_blank" style="text-decoration:none;">
+                <div style="text-align:center;">
+                    <img src="/uploads/{{ trip.start_image }}" 
+                         style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:2px solid #1e3a5f; cursor:pointer;" 
+                         alt="صورة بداية الرحلة">
+                    <div style="font-size:11px; color:#718096; margin-top:4px;">📷 صورة البداية</div>
+                </div>
+            </a>
+            {% endif %}
+            {% if trip.end_image %}
+            <a href="/uploads/{{ trip.end_image }}" target="_blank" style="text-decoration:none;">
+                <div style="text-align:center;">
+                    <img src="/uploads/{{ trip.end_image }}" 
+                         style="width:100px; height:100px; object-fit:cover; border-radius:8px; border:2px solid #38a169; cursor:pointer;" 
+                         alt="صورة نهاية الرحلة">
+                    <div style="font-size:11px; color:#718096; margin-top:4px;">📷 صورة النهاية</div>
+                </div>
+            </a>
+            {% endif %}
+        </div>
+        
+        <!-- أزرار الإجراءات -->
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <a href="/trips/edit/{{ trip.id }}" 
+               class="btn btn-primary" 
+               style="padding:10px 20px; font-size:14px;">
+                ✏️ عرض / تعديل
+            </a>
+            <button onclick="markSeen({{ trip.id }})" 
+                    class="btn btn-success" 
+                    style="padding:10px 20px; font-size:14px;">
+                ✓ تم الاطلاع
+            </button>
+        </div>
+        
     </div>
+    {% endfor %}
     
-    <div class="trip-info">
-        <div class="info-item">
-            <span class="label">السائق</span>
-            <span class="value">👤 {{ trip['driver_name'] }}</span>
+    {% else %}
+    <div style="text-align:center; padding:50px 20px;">
+        <div style="font-size:60px; margin-bottom:15px;">✓</div>
+        <div style="font-size:18px; font-weight:700; color:#38a169; margin-bottom:8px;">
+            لا توجد رحلات جديدة
         </div>
-        <div class="info-item">
-            <span class="label">السيارة</span>
-            <span class="value">🚗 {{ trip['car_name'] }}</span>
+        <div style="color:#718096; font-size:14px;">
+            تم الاطلاع على كل الرحلات من تطبيق السائق
         </div>
-        <div class="info-item">
-            <span class="label">الوجهة</span>
-            <span class="value">📍 {{ trip['destination'] or '—' }}</span>
-        </div>
-        <div class="info-item">
-            <span class="label">التاريخ</span>
-            <span class="value">
-                <span class="time-ago">جديد</span>
-                {{ trip['trip_date'] }}
-            </span>
-        </div>
-        <div class="info-item">
-            <span class="label">وقت البدء</span>
-            <span class="value">⏰ {{ trip['start_time'] or '—' }}</span>
-        </div>
-        <div class="info-item">
-            <span class="label">عداد البداية</span>
-            <span class="value">{{ trip['start_km'] or '—' }} كم</span>
-        </div>
-        {% if trip['end_km'] %}
-        <div class="info-item">
-            <span class="label">عداد النهاية</span>
-            <span class="value">{{ trip['end_km'] }} كم</span>
-        </div>
-        <div class="info-item">
-            <span class="label">المسافة</span>
-            <span class="value" style="color:#38a169;">{{ trip['distance'] or 0 }} كم</span>
-        </div>
-        <div class="info-item">
-            <span class="label">وقت الإنهاء</span>
-            <span class="value">⏰ {{ trip['end_time'] or '—' }}</span>
-        </div>
-        {% else %}
-        <div class="info-item" style="grid-column: 1 / -1;">
-            <span class="label">الحالة</span>
-            <span class="value" style="color:#d69e2e;">🟡 الرحلة لا تزال نشطة (لم تنته بعد)</span>
-        </div>
-        {% endif %}
     </div>
-    
-    <div class="trip-actions">
-        <a href="/trips/edit/{{ trip['id'] }}" class="btn-view">👁️ عرض / تعديل</a>
-        <button onclick="markSeen({{ trip['id'] }})" class="btn-dismiss">✓ تم الاطلاع</button>
-    </div>
-</div>
-{% endfor %}
-
-{% else %}
-<div class="card">
-    <div class="no-pending">
-        <span class="icon">✅</span>
-        <div class="title">ما في رحلات جديدة</div>
-        <div>كل الرحلات القادمة من تطبيق السائق تم الاطلاع عليها</div>
-    </div>
-</div>
-{% endif %}
-
-<!-- Modal عرض الصورة -->
-<div class="modal-image-overlay" id="imageModal" onclick="closeImage()">
-    <img id="modalImage" src="" alt="صورة العداد">
+    {% endif %}
 </div>
 
 <script>
 function markSeen(tripId) {
-    if (!confirm('هل تريد تعليم هذه الرحلة كمقروءة؟')) return;
+    if (!confirm('هل أنت متأكد من تعليم الرحلة كمقروءة؟')) return;
     
-    fetch('/admin/pending/mark_seen/' + tripId, {
+    fetch(`/admin/pending/mark_seen/${tripId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
     })
     .then(res => res.json())
     .then(data => {
         if (data.success) {
-            const card = document.getElementById('trip-card-' + tripId);
-            card.style.transition = 'all 0.3s';
-            card.style.opacity = '0';
-            card.style.transform = 'translateX(100px)';
-            setTimeout(() => {
-                card.remove();
-                checkEmpty();
-            }, 300);
+            const tripEl = document.getElementById(`trip-${tripId}`);
+            if (tripEl) {
+                tripEl.style.transition = 'all 0.5s';
+                tripEl.style.opacity = '0';
+                tripEl.style.transform = 'translateX(-50px)';
+                setTimeout(() => {
+                    tripEl.remove();
+                    // إذا ما بقي رحلات، أظهر رسالة "لا توجد رحلات"
+                    const remaining = document.querySelectorAll('[id^="trip-"]').length;
+                    if (remaining === 0) {
+                        location.reload();
+                    }
+                }, 500);
+            }
         } else {
-            alert('خطأ: ' + data.error);
+            alert('❌ حدث خطأ: ' + (data.error || 'غير معروف'));
         }
     })
-    .catch(err => alert('فشل الاتصال: ' + err.message));
+    .catch(err => {
+        alert('❌ فشل الاتصال بالسيرفر');
+        console.error(err);
+    });
 }
 
 function markAllSeen() {
-    if (!confirm('هل تريد تعليم كل الرحلات كمقروءة؟')) return;
+    if (!confirm('هل أنت متأكد من تعليم كل الرحلات كمقروءة؟')) return;
     
     fetch('/admin/pending/mark_all_seen', {
         method: 'POST',
@@ -354,34 +199,14 @@ function markAllSeen() {
         if (data.success) {
             location.reload();
         } else {
-            alert('خطأ: ' + data.error);
+            alert('❌ حدث خطأ: ' + (data.error || 'غير معروف'));
         }
     })
-    .catch(err => alert('فشل الاتصال: ' + err.message));
+    .catch(err => {
+        alert('❌ فشل الاتصال بالسيرفر');
+        console.error(err);
+    });
 }
-
-function checkEmpty() {
-    const cards = document.querySelectorAll('.trip-card');
-    if (cards.length === 0) {
-        location.reload();
-    }
-}
-
-function viewImage(src) {
-    document.getElementById('modalImage').src = src;
-    document.getElementById('imageModal').classList.add('show');
-}
-
-function closeImage() {
-    document.getElementById('imageModal').classList.remove('show');
-}
-
-// إغلاق الصورة بزر Escape
-document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape') {
-        closeImage();
-    }
-});
 </script>
 
 {% endblock %}

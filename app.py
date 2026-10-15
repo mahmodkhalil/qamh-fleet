@@ -420,6 +420,47 @@ def needs_daily_check(car_id, conn=None):
     return last_check is None
 
 
+# 🆕 ============== دوال السائقين/السيارات المشغولة ==============
+
+def get_busy_driver_ids(conn=None):
+    """
+    ترجع مجموعة IDs السائقين اللي عندهم رحلة نشطة حالياً.
+    (رحلة نشطة = trip_source = 'driver_app' AND end_km IS NULL)
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    cursor = conn.cursor()
+    execute_query(cursor, """
+        SELECT DISTINCT driver_id FROM trips
+        WHERE end_km IS NULL AND trip_source = 'driver_app'
+    """)
+    rows = cursor.fetchall()
+    if close_conn:
+        conn.close()
+    return {row['driver_id'] for row in rows}
+
+
+def get_busy_car_ids(conn=None):
+    """
+    ترجع مجموعة IDs السيارات اللي فيها رحلة نشطة حالياً.
+    """
+    close_conn = False
+    if conn is None:
+        conn = get_connection()
+        close_conn = True
+    cursor = conn.cursor()
+    execute_query(cursor, """
+        SELECT DISTINCT car_id FROM trips
+        WHERE end_km IS NULL AND trip_source = 'driver_app'
+    """)
+    rows = cursor.fetchall()
+    if close_conn:
+        conn.close()
+    return {row['car_id'] for row in rows}
+
+
 def ensure_daily_checks_table():
     """
     إنشاء جدول الفحص اليومي إذا ما موجود.
@@ -807,6 +848,10 @@ def api_admin_pending_count():
 @app.route('/admin/pending')
 @login_required
 def admin_pending_trips():
+    """
+    عرض الرحلات الجديدة من تطبيق السائق
+    مع إضافة معلومات الفحص اليومي لكل رحلة (daily_check_info)
+    """
     conn = get_connection()
     cursor = conn.cursor()
     execute_query(cursor, """
@@ -820,7 +865,54 @@ def admin_pending_trips():
           AND (t.admin_seen IS NULL OR t.admin_seen = 0)
         ORDER BY t.id DESC
     """)
-    pending_trips = cursor.fetchall()
+    pending_trips_raw = cursor.fetchall()
+
+    # 🆕 جلب آخر فحص يومي لكل سيارة مذكورة في الرحلات
+    pending_trips = []
+    car_last_check_cache = {}
+    for trip in pending_trips_raw:
+        trip_dict = dict(trip)
+        car_id = trip['car_id']
+        # نستخدم cache لتجنب تكرار الاستعلام لنفس السيارة
+        if car_id not in car_last_check_cache:
+            execute_query(cursor, """
+                SELECT dc.*, d.name as driver_name
+                FROM daily_checks dc
+                JOIN drivers d ON dc.driver_id = d.id
+                WHERE dc.car_id = ?
+                ORDER BY dc.id DESC
+                LIMIT 1
+            """, (car_id,))
+            last_check_row = cursor.fetchone()
+            if last_check_row:
+                # نتأكد إن آخر فحص خلال 24 ساعة
+                try:
+                    check_dt = datetime.strptime(
+                        f"{last_check_row['check_date']} {last_check_row['check_time']}",
+                        "%Y-%m-%d %H:%M:%S"
+                    )
+                except (ValueError, TypeError):
+                    try:
+                        check_dt = datetime.strptime(
+                            f"{last_check_row['check_date']} {last_check_row['check_time']}",
+                            "%Y-%m-%d %H:%M"
+                        )
+                    except:
+                        check_dt = None
+                if check_dt:
+                    hours_since = (datetime.now() - check_dt).total_seconds() / 3600
+                    if hours_since < 24:
+                        car_last_check_cache[car_id] = dict(last_check_row)
+                    else:
+                        car_last_check_cache[car_id] = None
+                else:
+                    car_last_check_cache[car_id] = None
+            else:
+                car_last_check_cache[car_id] = None
+
+        trip_dict['daily_check_info'] = car_last_check_cache[car_id]
+        pending_trips.append(trip_dict)
+
     conn.close()
     return render_template('admin_pending.html', pending_trips=pending_trips)
 
@@ -1234,6 +1326,29 @@ def daily_check_edit(check_id):
     conn.close()
     flash('تم حفظ التعديلات', 'success')
     return redirect(url_for('daily_check_view', check_id=check_id))
+
+
+# 🆕 ============== حذف الفحص اليومي (للمسؤول فقط) ==============
+
+@app.route('/daily_checks/delete/<int:check_id>')
+@admin_required
+def daily_check_delete(check_id):
+    """حذف فحص يومي (للمسؤول فقط)"""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        execute_query(cursor, "SELECT id FROM daily_checks WHERE id=?", (check_id,))
+        if not cursor.fetchone():
+            conn.close()
+            flash('الفحص غير موجود', 'error')
+            return redirect(url_for('daily_checks_list'))
+        execute_query(cursor, "DELETE FROM daily_checks WHERE id=?", (check_id,))
+        conn.commit()
+        conn.close()
+        flash('تم حذف الفحص اليومي بنجاح', 'success')
+    except Exception as e:
+        flash(f'خطأ في الحذف: {str(e)}', 'error')
+    return redirect(url_for('daily_checks_list'))
 
 
 # ============== السائقين ==============
@@ -3080,6 +3195,9 @@ def api_driver_init():
         cars_list = [dict(row) for row in cursor.fetchall()]
         execute_query(cursor, "SELECT id, name FROM requesting_parties WHERE active=1 ORDER BY name")
         parties_list = [dict(row) for row in cursor.fetchall()]
+        # 🆕 السائقون والسيارات المشغولون
+        busy_driver_ids = list(get_busy_driver_ids(conn))
+        busy_car_ids = list(get_busy_car_ids(conn))
         conn.close()
         # 🆕 التنبيهات الطارئة (صيانة متأخرة)
         alerts = get_maintenance_alerts()
@@ -3089,6 +3207,8 @@ def api_driver_init():
             'drivers': drivers_list,
             'cars': cars_list,
             'parties': parties_list,
+            'busy_driver_ids': busy_driver_ids,
+            'busy_car_ids': busy_car_ids,
             'alerts': critical_alerts
         })
     except Exception as e:

@@ -125,6 +125,13 @@
             background: #fff5f5;
         }
 
+        /* 🆕 تنسيق خاص للخيارات المعطّلة (مشغول) */
+        .form-group select option:disabled {
+            color: #a0aec0;
+            background: #f7fafc;
+            font-style: italic;
+        }
+
         .btn {
             display: block;
             width: 100%;
@@ -683,7 +690,7 @@ function renderCriticalAlerts(alerts) {
     box.classList.remove('hidden');
 }
 
-// 🆕 مزامنة حالة الفحص (تشتغل مع onchange)
+// 🆕 مزامنة حالة الفحص
 function syncCheck(field) {
     const checkbox = document.getElementById(field + '_checked');
     const item = document.getElementById('check-' + field);
@@ -721,12 +728,22 @@ async function loadInitData(savedDriverId, savedCarId) {
             renderCriticalAlerts(data.alerts);
         }
         
+        // 🆕 مجموعة السائقين المشغولين والسيارات المشغولة
+        const busyDrivers = new Set(data.busy_driver_ids || []);
+        const busyCars = new Set(data.busy_car_ids || []);
+        
         const driverSelect = document.getElementById('driverSelect');
         driverSelect.innerHTML = '<option value="">-- اختر السائق --</option>';
         data.drivers.forEach(d => {
             const opt = document.createElement('option');
             opt.value = d.id;
-            opt.textContent = d.name;
+            if (busyDrivers.has(d.id)) {
+                opt.textContent = '🚫 ' + d.name + ' (مشغول حالياً)';
+                opt.disabled = true;
+                opt.style.color = '#a0aec0';
+            } else {
+                opt.textContent = d.name;
+            }
             driverSelect.appendChild(opt);
         });
         
@@ -735,7 +752,14 @@ async function loadInitData(savedDriverId, savedCarId) {
         data.cars.forEach(c => {
             const opt = document.createElement('option');
             opt.value = c.id;
-            opt.textContent = c.name + (c.plate_number ? ' - ' + c.plate_number : '');
+            const carLabel = c.name + (c.plate_number ? ' - ' + c.plate_number : '');
+            if (busyCars.has(c.id)) {
+                opt.textContent = '🚫 ' + carLabel + ' (مشغولة حالياً)';
+                opt.disabled = true;
+                opt.style.color = '#a0aec0';
+            } else {
+                opt.textContent = carLabel;
+            }
             carSelect.appendChild(opt);
         });
         
@@ -903,7 +927,6 @@ function displayLastCheckBox(lastCheck) {
 
 // ============== الفحص اليومي ==============
 function toggleCheck(field) {
-    // فقط نزامن الحالة مع الـ checkbox
     const checkbox = document.getElementById(field + '_checked');
     const item = document.getElementById('check-' + field);
     if (checkbox.checked) {
