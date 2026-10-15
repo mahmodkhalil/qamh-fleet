@@ -109,7 +109,12 @@
                         {% endif %}
                     </td>
                     <td>
-                        <a href="/daily_checks/view/{{ dc.id }}" class="btn btn-primary" style="padding:5px 10px; font-size:12px;">👁️ عرض</a>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            <a href="/daily_checks/view/{{ dc.id }}" class="btn btn-primary" style="padding:5px 10px; font-size:12px;">👁️ عرض</a>
+                            {% if is_admin %}
+                            <a href="/daily_checks/delete/{{ dc.id }}" class="btn btn-danger" style="padding:5px 10px; font-size:12px;" onclick="return confirm('⚠️ هل أنت متأكد من حذف هذا الفحص؟\n\nلا يمكن التراجع عن هذا الإجراء!')">🗑️ حذف</a>
+                            {% endif %}
+                        </div>
                     </td>
                 </tr>
                 {% endfor %}
