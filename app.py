@@ -407,7 +407,7 @@ def get_last_daily_check(car_id, conn=None):
         except:
             return None
     hours_since = (datetime.now() - check_datetime).total_seconds() / 3600
-    if hours_since < 24:
+    if hours_since < 3:
         return dict(check)
     return None
 
