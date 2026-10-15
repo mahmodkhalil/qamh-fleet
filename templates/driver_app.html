@@ -44,7 +44,6 @@
         .status-online { background: #38a169; color: white; }
         .status-offline { background: #e53e3e; color: white; }
 
-        /* قسم التنبيهات الحرجة */
         .critical-alerts-box {
             background: #fed7d7;
             color: #742a2a;
@@ -125,7 +124,6 @@
             background: #fff5f5;
         }
 
-        /* 🆕 تنسيق خاص للخيارات المعطّلة (مشغول) */
         .form-group select option:disabled {
             color: #a0aec0;
             background: #f7fafc;
@@ -155,6 +153,34 @@
         .btn-warning { background: #d69e2e; color: white; }
         .btn-secondary { background: #718096; color: white; }
         .btn:disabled { background: #cbd5e0; color: #a0aec0; cursor: not-allowed; }
+
+        /* 🆕 أزرار الكاميرا */
+        .image-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .image-buttons button {
+            flex: 1;
+            padding: 10px 8px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 8px;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+        .btn-camera {
+            background: #1e3a5f;
+            color: white;
+        }
+        .btn-camera:active { background: #2c5282; }
+        .btn-gallery {
+            background: #718096;
+            color: white;
+        }
+        .btn-gallery:active { background: #4a5568; }
 
         .image-upload {
             border: 3px dashed #cbd5e0;
@@ -287,7 +313,6 @@
         .range-warning.show { display: block; }
         .range-warning .hint { font-size: 12px; color: #975a16; margin-top: 4px; font-weight: 400; }
 
-        /* صندوق "تم الفحص من X" */
         .last-check-box {
             background: linear-gradient(135deg, #c6f6d5 0%, #9ae6b4 100%);
             color: #22543d;
@@ -331,7 +356,6 @@
             border: 2px solid white;
         }
 
-        /* الفحص اليومي - البنود */
         .daily-check-item {
             background: #f7fafc;
             border-radius: 10px;
@@ -390,9 +414,7 @@
 
 <div class="container">
 
-    <!-- التنبيهات الحرجة -->
     <div id="criticalAlertsBox" class="hidden"></div>
-
     <div id="alertBox"></div>
 
     <!-- شاشة تسجيل الدخول الأول -->
@@ -445,10 +467,20 @@
             <h2>🏁 إنهاء الرحلة</h2>
             <div class="form-group">
                 <label>صورة العداد (النهاية) — اختياري</label>
-                <div class="image-upload" id="endImageUpload" onclick="document.getElementById('endImageInput').click()">
+                <!-- 🆕 زرين: تصوير + استديو -->
+                <div class="image-buttons">
+                    <button type="button" class="btn-camera" onclick="document.getElementById('endCameraInput').click()">
+                        📷 تصوير مباشر
+                    </button>
+                    <button type="button" class="btn-gallery" onclick="document.getElementById('endGalleryInput').click()">
+                        🖼️ من الاستديو
+                    </button>
+                </div>
+                <div class="image-upload" id="endImageUpload">
                     <div class="icon">📷</div>
-                    <div class="text">اضغط لتصوير العداد</div>
-                    <input type="file" id="endImageInput" accept="image/*">
+                    <div class="text">لم يتم اختيار صورة</div>
+                    <input type="file" id="endCameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="endGalleryInput" accept="image/*" style="display:none;">
                 </div>
             </div>
             <div class="form-group">
@@ -486,10 +518,15 @@
                     <span class="check-label">🛢️ فحص زيت المحرك</span>
                 </div>
                 <textarea id="oil_notes" placeholder="ملاحظات على زيت المحرك (اختياري)"></textarea>
-                <div class="image-upload" id="oil_image_upload" onclick="document.getElementById('oil_image_input').click()">
+                <div class="image-buttons">
+                    <button type="button" class="btn-camera" onclick="document.getElementById('oilCameraInput').click()">📷 تصوير</button>
+                    <button type="button" class="btn-gallery" onclick="document.getElementById('oilGalleryInput').click()">🖼️ استديو</button>
+                </div>
+                <div class="image-upload" id="oil_image_upload">
                     <div class="icon">📷</div>
                     <div class="text">إرفاق صورة (اختياري)</div>
-                    <input type="file" id="oil_image_input" accept="image/*" onchange="handleCheckImage(event, 'oil')">
+                    <input type="file" id="oilCameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="oilGalleryInput" accept="image/*" style="display:none;">
                 </div>
             </div>
 
@@ -499,10 +536,15 @@
                     <span class="check-label">💧 فحص ماء الراديتور</span>
                 </div>
                 <textarea id="radiator_notes" placeholder="ملاحظات على ماء الراديتور (اختياري)"></textarea>
-                <div class="image-upload" id="radiator_image_upload" onclick="document.getElementById('radiator_image_input').click()">
+                <div class="image-buttons">
+                    <button type="button" class="btn-camera" onclick="document.getElementById('radiatorCameraInput').click()">📷 تصوير</button>
+                    <button type="button" class="btn-gallery" onclick="document.getElementById('radiatorGalleryInput').click()">🖼️ استديو</button>
+                </div>
+                <div class="image-upload" id="radiator_image_upload">
                     <div class="icon">📷</div>
                     <div class="text">إرفاق صورة (اختياري)</div>
-                    <input type="file" id="radiator_image_input" accept="image/*" onchange="handleCheckImage(event, 'radiator')">
+                    <input type="file" id="radiatorCameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="radiatorGalleryInput" accept="image/*" style="display:none;">
                 </div>
             </div>
 
@@ -512,10 +554,15 @@
                     <span class="check-label">🛞 فحص الإطارات</span>
                 </div>
                 <textarea id="tires_notes" placeholder="ملاحظات على الإطارات (اختياري)"></textarea>
-                <div class="image-upload" id="tires_image_upload" onclick="document.getElementById('tires_image_input').click()">
+                <div class="image-buttons">
+                    <button type="button" class="btn-camera" onclick="document.getElementById('tiresCameraInput').click()">📷 تصوير</button>
+                    <button type="button" class="btn-gallery" onclick="document.getElementById('tiresGalleryInput').click()">🖼️ استديو</button>
+                </div>
+                <div class="image-upload" id="tires_image_upload">
                     <div class="icon">📷</div>
                     <div class="text">إرفاق صورة (اختياري)</div>
-                    <input type="file" id="tires_image_input" accept="image/*" onchange="handleCheckImage(event, 'tires')">
+                    <input type="file" id="tiresCameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="tiresGalleryInput" accept="image/*" style="display:none;">
                 </div>
             </div>
 
@@ -525,10 +572,15 @@
                     <span class="check-label">🔋 فحص البطارية</span>
                 </div>
                 <textarea id="battery_notes" placeholder="ملاحظات على البطارية (اختياري)"></textarea>
-                <div class="image-upload" id="battery_image_upload" onclick="document.getElementById('battery_image_input').click()">
+                <div class="image-buttons">
+                    <button type="button" class="btn-camera" onclick="document.getElementById('batteryCameraInput').click()">📷 تصوير</button>
+                    <button type="button" class="btn-gallery" onclick="document.getElementById('batteryGalleryInput').click()">🖼️ استديو</button>
+                </div>
+                <div class="image-upload" id="battery_image_upload">
                     <div class="icon">📷</div>
                     <div class="text">إرفاق صورة (اختياري)</div>
-                    <input type="file" id="battery_image_input" accept="image/*" onchange="handleCheckImage(event, 'battery')">
+                    <input type="file" id="batteryCameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="batteryGalleryInput" accept="image/*" style="display:none;">
                 </div>
             </div>
 
@@ -538,10 +590,15 @@
                     <span class="check-label">🔗 فحص القشاطات (بالنظر)</span>
                 </div>
                 <textarea id="belts_notes" placeholder="ملاحظات على القشاطات (اختياري)"></textarea>
-                <div class="image-upload" id="belts_image_upload" onclick="document.getElementById('belts_image_input').click()">
+                <div class="image-buttons">
+                    <button type="button" class="btn-camera" onclick="document.getElementById('beltsCameraInput').click()">📷 تصوير</button>
+                    <button type="button" class="btn-gallery" onclick="document.getElementById('beltsGalleryInput').click()">🖼️ استديو</button>
+                </div>
+                <div class="image-upload" id="belts_image_upload">
                     <div class="icon">📷</div>
                     <div class="text">إرفاق صورة (اختياري)</div>
-                    <input type="file" id="belts_image_input" accept="image/*" onchange="handleCheckImage(event, 'belts')">
+                    <input type="file" id="beltsCameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="beltsGalleryInput" accept="image/*" style="display:none;">
                 </div>
             </div>
 
@@ -572,7 +629,6 @@
             </div>
             <h2>🚀 بدء رحلة جديدة</h2>
 
-            <!-- صندوق "تم الفحص من X" -->
             <div id="lastCheckBox" class="hidden"></div>
 
             <div class="form-group">
@@ -589,10 +645,20 @@
 
             <div class="form-group">
                 <label>صورة العداد (البداية) — اختياري</label>
-                <div class="image-upload" id="startImageUpload" onclick="document.getElementById('startImageInput').click()">
+                <!-- 🆕 زرين: تصوير + استديو -->
+                <div class="image-buttons">
+                    <button type="button" class="btn-camera" onclick="document.getElementById('startCameraInput').click()">
+                        📷 تصوير مباشر
+                    </button>
+                    <button type="button" class="btn-gallery" onclick="document.getElementById('startGalleryInput').click()">
+                        🖼️ من الاستديو
+                    </button>
+                </div>
+                <div class="image-upload" id="startImageUpload">
                     <div class="icon">📷</div>
-                    <div class="text">اضغط لتصوير العداد</div>
-                    <input type="file" id="startImageInput" accept="image/*">
+                    <div class="text">لم يتم اختيار صورة</div>
+                    <input type="file" id="startCameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="startGalleryInput" accept="image/*" style="display:none;">
                 </div>
             </div>
 
@@ -652,6 +718,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('online', updateOnlineStatus);
     window.addEventListener('offline', updateOnlineStatus);
     loadSavedIdentity();
+    setupImageListeners();
 });
 
 function updateOnlineStatus() {
@@ -672,6 +739,28 @@ function showAlert(message, type = 'info') {
     alertBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
+// 🆕 ربط أحداث الصور (تصوير + استديو)
+function setupImageListeners() {
+    // صور الرحلة (بداية + نهاية)
+    ['start', 'end'].forEach(type => {
+        document.getElementById(type + 'CameraInput').addEventListener('change', function(e) {
+            handleImageSelect(e, type + 'ImageUpload', type);
+        });
+        document.getElementById(type + 'GalleryInput').addEventListener('change', function(e) {
+            handleImageSelect(e, type + 'ImageUpload', type);
+        });
+    });
+    // صور الفحص اليومي
+    ['oil', 'radiator', 'tires', 'battery', 'belts'].forEach(field => {
+        document.getElementById(field + 'CameraInput').addEventListener('change', function(e) {
+            handleCheckImage(e, field);
+        });
+        document.getElementById(field + 'GalleryInput').addEventListener('change', function(e) {
+            handleCheckImage(e, field);
+        });
+    });
+}
+
 // عرض التنبيهات الحرجة
 function renderCriticalAlerts(alerts) {
     const box = document.getElementById('criticalAlertsBox');
@@ -690,7 +779,6 @@ function renderCriticalAlerts(alerts) {
     box.classList.remove('hidden');
 }
 
-// 🆕 مزامنة حالة الفحص
 function syncCheck(field) {
     const checkbox = document.getElementById(field + '_checked');
     const item = document.getElementById('check-' + field);
@@ -723,12 +811,10 @@ async function loadInitData(savedDriverId, savedCarId) {
             return;
         }
         
-        // عرض التنبيهات الحرجة
         if (data.alerts) {
             renderCriticalAlerts(data.alerts);
         }
         
-        // 🆕 مجموعة السائقين المشغولين والسيارات المشغولة
         const busyDrivers = new Set(data.busy_driver_ids || []);
         const busyCars = new Set(data.busy_car_ids || []);
         
@@ -763,7 +849,6 @@ async function loadInitData(savedDriverId, savedCarId) {
             carSelect.appendChild(opt);
         });
         
-        // تحميل الجهات الطالبة
         const partySelect = document.getElementById('requestingPartySelect');
         if (partySelect && data.parties) {
             partySelect.innerHTML = '<option value="">-- اختر الجهة الطالبة --</option>';
@@ -796,7 +881,6 @@ async function loadInitData(savedDriverId, savedCarId) {
     }
 }
 
-// ============== إدارة الشاشات ==============
 function showScreen(screen) {
     document.getElementById('loginScreen').classList.add('hidden');
     document.getElementById('activeTripScreen').classList.add('hidden');
@@ -841,7 +925,6 @@ function changeIdentity() {
     }
 }
 
-// ============== فحص الفحص اليومي ==============
 async function checkDailyCheckNeeded() {
     if (!currentCar) return;
     
@@ -887,7 +970,6 @@ async function checkDailyCheckNeeded() {
     }
 }
 
-// عرض صندوق "تم الفحص من X"
 function displayLastCheckBox(lastCheck) {
     const box = document.getElementById('lastCheckBox');
     
@@ -925,7 +1007,6 @@ function displayLastCheckBox(lastCheck) {
     box.classList.remove('hidden');
 }
 
-// ============== الفحص اليومي ==============
 function toggleCheck(field) {
     const checkbox = document.getElementById(field + '_checked');
     const item = document.getElementById('check-' + field);
@@ -936,6 +1017,7 @@ function toggleCheck(field) {
     }
 }
 
+// 🆕 معالج صور الفحص اليومي (تصوير + استديو)
 function handleCheckImage(event, field) {
     const file = event.target.files[0];
     if (!file) return;
@@ -950,8 +1032,16 @@ function handleCheckImage(event, field) {
             upload.innerHTML = `
                 <img src="${compressedData}" alt="صورة ${field}">
                 <div class="text" style="color: #38a169; margin-top: 8px;">✓ تم الرفع - اضغط للتغيير</div>
-                <input type="file" id="${field}_image_input" accept="image/*" onchange="handleCheckImage(event, '${field}')">
+                <input type="file" id="${field}CameraInput" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="${field}GalleryInput" accept="image/*" style="display:none;">
             `;
+            // إعادة ربط الأحداث بعد التحديث
+            document.getElementById(field + 'CameraInput').addEventListener('change', function(e) {
+                handleCheckImage(e, field);
+            });
+            document.getElementById(field + 'GalleryInput').addEventListener('change', function(e) {
+                handleCheckImage(e, field);
+            });
         });
     };
     reader.readAsDataURL(file);
@@ -1016,8 +1106,15 @@ async function submitDailyCheck() {
                 document.getElementById(f + '_image_upload').innerHTML = `
                     <div class="icon">📷</div>
                     <div class="text">إرفاق صورة (اختياري)</div>
-                    <input type="file" id="${f}_image_input" accept="image/*" onchange="handleCheckImage(event, '${f}')">
+                    <input type="file" id="${f}CameraInput" accept="image/*" capture="environment" style="display:none;">
+                    <input type="file" id="${f}GalleryInput" accept="image/*" style="display:none;">
                 `;
+                document.getElementById(f + 'CameraInput').addEventListener('change', function(e) {
+                    handleCheckImage(e, f);
+                });
+                document.getElementById(f + 'GalleryInput').addEventListener('change', function(e) {
+                    handleCheckImage(e, f);
+                });
                 checkImagesData[f] = null;
             });
             
@@ -1035,7 +1132,6 @@ async function submitDailyCheck() {
     }
 }
 
-// ============== عرض الرحلة النشطة ==============
 function displayActiveTrip(trip) {
     document.getElementById('activeDriverName').textContent = currentDriver.name;
     document.getElementById('activeCarName').textContent = trip.car_name;
@@ -1050,7 +1146,6 @@ function displayNewTripScreen() {
     document.getElementById('welcomeCarName').textContent = currentCar.name;
 }
 
-// ============== التحقق من العداد النهائي ==============
 function checkEndKm() {
     const endKmInput = document.getElementById('endKm');
     const warning = document.getElementById('rangeWarning');
@@ -1072,15 +1167,7 @@ function checkEndKm() {
     }
 }
 
-// ============== رفع الصور ==============
-document.getElementById('startImageInput').addEventListener('change', function(e) {
-    handleImageSelect(e, 'startImageUpload', 'start');
-});
-
-document.getElementById('endImageInput').addEventListener('change', function(e) {
-    handleImageSelect(e, 'endImageUpload', 'end');
-});
-
+// 🆕 معالج صور الرحلة (تصوير + استديو)
 function handleImageSelect(event, uploadId, type) {
     const file = event.target.files[0];
     if (!file) return;
@@ -1100,10 +1187,14 @@ function handleImageSelect(event, uploadId, type) {
             upload.innerHTML = `
                 <img src="${compressedData}" alt="صورة العداد">
                 <div class="text" style="color: #38a169; margin-top: 8px;">✓ تم التصوير - اضغط للتغيير</div>
-                <input type="file" id="${type}ImageInput" accept="image/*">
+                <input type="file" id="${type}CameraInput" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="${type}GalleryInput" accept="image/*" style="display:none;">
             `;
             
-            document.getElementById(`${type}ImageInput`).addEventListener('change', function(e) {
+            document.getElementById(type + 'CameraInput').addEventListener('change', function(e) {
+                handleImageSelect(e, uploadId, type);
+            });
+            document.getElementById(type + 'GalleryInput').addEventListener('change', function(e) {
                 handleImageSelect(e, uploadId, type);
             });
         });
@@ -1135,7 +1226,6 @@ function compressImage(dataUrl, maxSize, quality, callback) {
     img.src = dataUrl;
 }
 
-// ============== بدء الرحلة ==============
 async function startTrip() {
     const destination = document.getElementById('destination').value.trim();
     const requestingPartyId = document.getElementById('requestingPartySelect').value || null;
@@ -1204,10 +1294,14 @@ async function startTrip() {
             upload.classList.remove('has-image');
             upload.innerHTML = `
                 <div class="icon">📷</div>
-                <div class="text">اضغط لتصوير العداد</div>
-                <input type="file" id="startImageInput" accept="image/*">
+                <div class="text">لم يتم اختيار صورة</div>
+                <input type="file" id="startCameraInput" accept="image/*" capture="environment" style="display:none;">
+                <input type="file" id="startGalleryInput" accept="image/*" style="display:none;">
             `;
-            document.getElementById('startImageInput').addEventListener('change', function(e) {
+            document.getElementById('startCameraInput').addEventListener('change', function(e) {
+                handleImageSelect(e, 'startImageUpload', 'start');
+            });
+            document.getElementById('startGalleryInput').addEventListener('change', function(e) {
                 handleImageSelect(e, 'startImageUpload', 'start');
             });
             
@@ -1223,7 +1317,6 @@ async function startTrip() {
     }
 }
 
-// ============== إنهاء الرحلة ==============
 async function endTrip() {
     const endKmInput = document.getElementById('endKm');
     const endKm = endKmInput.value;
@@ -1306,7 +1399,6 @@ async function endTrip() {
     }
 }
 
-// ============== آخر الرحلات ==============
 async function loadRecentTrips() {
     if (!currentDriver) return;
     
@@ -1341,7 +1433,6 @@ async function loadRecentTrips() {
     }
 }
 
-// ============== التنقل السفلي ==============
 function showNewTrip() {
     checkDailyCheckNeeded();
     setActiveNav('navNewTrip');
@@ -1371,7 +1462,6 @@ function setActiveNav(id) {
     if (btn) btn.classList.add('active');
 }
 
-// تحديث تلقائي كل 60 ثانية
 setInterval(() => {
     if (currentDriver && !currentActiveTrip) {
         loadRecentTrips();
