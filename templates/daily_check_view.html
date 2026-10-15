@@ -8,7 +8,17 @@
     <h2>🔧 تفاصيل الفحص اليومي #{{ check.id }}</h2>
     
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
-        <a href="/daily_checks" class="btn btn-secondary" style="max-width: 200px;">⬅️ العودة للقائمة</a>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <a href="/daily_checks" class="btn btn-secondary" style="max-width: 200px;">⬅️ العودة للقائمة</a>
+            {% if is_admin %}
+            <a href="/daily_checks/delete/{{ check.id }}" 
+               class="btn btn-danger" 
+               style="max-width: 200px;"
+               onclick="return confirm('⚠️ هل أنت متأكد من حذف هذا الفحص؟\n\nلا يمكن التراجع عن هذا الإجراء!')">
+                🗑️ حذف الفحص
+            </a>
+            {% endif %}
+        </div>
         {% if check.has_issue == 1 %}
         <div style="background:#fed7d7; color:#742a2a; padding:10px 20px; border-radius:8px; font-weight:700; border-right:4px solid #e53e3e;">
             ⚠️ يوجد عطل في هذا الفحص
@@ -208,7 +218,15 @@
                 <span>⚠️ تأكيد وجود عطل يحتاج متابعة</span>
             </label>
         </div>
-        <button type="submit" class="btn btn-success">💾 حفظ التعديلات</button>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button type="submit" class="btn btn-success" style="flex: 1; min-width: 200px;">💾 حفظ التعديلات</button>
+            <a href="/daily_checks/delete/{{ check.id }}" 
+               class="btn btn-danger" 
+               style="flex: 1; min-width: 200px;"
+               onclick="return confirm('⚠️ هل أنت متأكد من حذف هذا الفحص؟\n\nلا يمكن التراجع عن هذا الإجراء!')">
+                🗑️ حذف الفحص
+            </a>
+        </div>
     </form>
 </div>
 {% elif check.admin_notes %}
