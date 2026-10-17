@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
+import requests
 
 # ============== اتصال قاعدة البيانات ==============
 try:
@@ -38,6 +39,50 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
+
+
+# ============== Supabase Storage ==============
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+SUPABASE_SECRET_KEY = os.environ.get('SUPABASE_SECRET_KEY', '')
+SUPABASE_BUCKET = 'qamh-images'
+
+
+def upload_image_to_supabase(filename, img_data):
+    """رفع صورة إلى Supabase Storage"""
+    if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+        print("⚠ Supabase keys غير مضبوطة - استخدام التخزين المحلي")
+        return None
+    try:
+        url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
+        headers = {
+            'Authorization': f'Bearer {SUPABASE_SECRET_KEY}',
+            'Content-Type': 'image/jpeg',
+            'x-upsert': 'true'
+        }
+        response = requests.post(url, headers=headers, data=img_data, timeout=30)
+        if response.status_code in (200, 201):
+            print(f"✓ تم رفع الصورة إلى Supabase: {filename}")
+            return filename
+        else:
+            print(f"⚠ خطأ في رفع الصورة: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        print(f"⚠ خطأ في رفع الصورة: {e}")
+        return None
+
+
+def delete_image_from_supabase(filename):
+    """حذف صورة من Supabase Storage"""
+    if not filename or not SUPABASE_URL or not SUPABASE_SECRET_KEY:
+        return False
+    try:
+        url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
+        headers = {'Authorization': f'Bearer {SUPABASE_SECRET_KEY}'}
+        response = requests.delete(url, headers=headers, timeout=30)
+        return response.status_code in (200, 204)
+    except Exception as e:
+        print(f"⚠ خطأ في حذف الصورة: {e}")
+        return False
 
 
 def load_passwords():
@@ -378,7 +423,7 @@ def get_requesting_parties(active_only=True, conn=None):
 
 def get_last_daily_check(car_id, conn=None):
     """
-    ترجع آخر فحص يومي للسيارة (خلال 24 ساعة).
+    ترجع آخر فحص يومي للسيارة (خلال 3 ساعات).
     ترجع None إذا ما في فحص حديث.
     """
     close_conn = False
@@ -1337,11 +1382,17 @@ def daily_check_delete(check_id):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        execute_query(cursor, "SELECT id FROM daily_checks WHERE id=?", (check_id,))
-        if not cursor.fetchone():
+        execute_query(cursor, "SELECT * FROM daily_checks WHERE id=?", (check_id,))
+        check = cursor.fetchone()
+        if not check:
             conn.close()
             flash('الفحص غير موجود', 'error')
             return redirect(url_for('daily_checks_list'))
+        # حذف الصور من Supabase (إذا موجودة)
+        for img_field in ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image']:
+            img_name = check.get(img_field) if check else None
+            if img_name:
+                delete_image_from_supabase(img_name)
         execute_query(cursor, "DELETE FROM daily_checks WHERE id=?", (check_id,))
         conn.commit()
         conn.close()
@@ -1763,6 +1814,23 @@ def delete_maintenance(m_id):
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
+    """تحميل صورة - من Supabase Storage أو من المجلد المحلي"""
+    if not filename:
+        return jsonify({'error': 'not found'}), 404
+    
+    # إذا Supabase مضبوط، نحول لـ Supabase Storage
+    if SUPABASE_URL and SUPABASE_BUCKET:
+        try:
+            # نتحقق إنه الملف موجود في المجلد المحلي (احتياطي)
+            local_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.exists(local_path):
+                return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        except Exception:
+            pass
+        # نرجع رابط Supabase مباشر
+        return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
+    
+    # Fallback - محلي
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 
@@ -3233,7 +3301,7 @@ def api_driver_alerts():
 @app.route('/api/driver/last_check/<int:car_id>', methods=['GET'])
 def api_driver_last_check(car_id):
     """
-    ترجع آخر فحص للسيارة (خلال 24 ساعة).
+    ترجع آخر فحص للسيارة (خلال 3 ساعات).
     إذا ما في فحص حديث، ترجع needs_check=True.
     """
     try:
@@ -3270,7 +3338,7 @@ def api_driver_last_check(car_id):
 
 @app.route('/api/driver/daily_check', methods=['POST'])
 def api_driver_daily_check():
-    """حفظ الفحص اليومي من تطبيق السائق"""
+    """حفظ الفحص اليومي من تطبيق السائق - مع رفع الصور لـ Supabase"""
     try:
         data = request.get_json()
         car_id = data.get('car_id')
@@ -3282,7 +3350,7 @@ def api_driver_daily_check():
         if not car_id or not driver_id:
             return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
         
-        # حفظ الصور
+        # 🆕 رفع الصور إلى Supabase Storage
         images = {}
         for field in ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image']:
             img_b64 = data.get(field, '')
@@ -3293,10 +3361,19 @@ def api_driver_daily_check():
                     img_data = base64.b64decode(img_b64)
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     filename = f"check_{field}_{car_id}_{driver_id}_{timestamp}.jpg"
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                    with open(filepath, 'wb') as f:
-                        f.write(img_data)
-                    images[field] = filename
+                    
+                    # محاولة الرفع لـ Supabase أولاً
+                    uploaded = upload_image_to_supabase(filename, img_data)
+                    
+                    if uploaded:
+                        images[field] = uploaded
+                    else:
+                        # Fallback - حفظ محلي
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        with open(filepath, 'wb') as f:
+                            f.write(img_data)
+                        images[field] = filename
+                        print(f"⚠ تم حفظ {field} محلياً (Supabase غير متاح)")
                 except Exception as e:
                     print(f"⚠ خطأ في حفظ {field}: {e}")
                     images[field] = None
@@ -3348,6 +3425,7 @@ def api_driver_daily_check():
 
 @app.route('/api/driver/start_trip', methods=['POST'])
 def api_driver_start_trip():
+    """بدء رحلة جديدة - مع رفع صورة البداية لـ Supabase"""
     try:
         data = request.get_json()
         driver_id = data.get('driver_id')
@@ -3370,7 +3448,7 @@ def api_driver_start_trip():
         except (ValueError, TypeError):
             return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
         
-        # الصورة اختيارية - نحفظها فقط إذا كانت موجودة
+        # 🆕 رفع صورة البداية لـ Supabase
         start_image_filename = None
         if start_image_b64 and len(start_image_b64) > 100:
             try:
@@ -3379,9 +3457,18 @@ def api_driver_start_trip():
                 img_data = base64.b64decode(start_image_b64)
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 start_image_filename = f"trip_start_{driver_id}_{car_id}_{timestamp}.jpg"
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], start_image_filename)
-                with open(filepath, 'wb') as f:
-                    f.write(img_data)
+                
+                # محاولة الرفع لـ Supabase
+                uploaded = upload_image_to_supabase(start_image_filename, img_data)
+                
+                if uploaded:
+                    start_image_filename = uploaded
+                else:
+                    # Fallback - حفظ محلي
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], start_image_filename)
+                    with open(filepath, 'wb') as f:
+                        f.write(img_data)
+                    print(f"⚠ تم حفظ صورة البداية محلياً")
             except Exception as e:
                 print(f"⚠ خطأ في حفظ صورة البداية: {e}")
                 start_image_filename = None
@@ -3421,6 +3508,7 @@ def api_driver_start_trip():
 
 @app.route('/api/driver/end_trip', methods=['POST'])
 def api_driver_end_trip():
+    """إنهاء الرحلة - مع رفع صورة النهاية لـ Supabase"""
     try:
         data = request.get_json()
         trip_id = data.get('trip_id')
@@ -3465,7 +3553,7 @@ def api_driver_end_trip():
             except (ValueError, TypeError):
                 distance = None
         
-        # الصورة اختيارية - نحفظها فقط إذا كانت موجودة
+        # 🆕 رفع صورة النهاية لـ Supabase
         end_image_filename = None
         if end_image_b64 and len(end_image_b64) > 100:
             try:
@@ -3474,9 +3562,18 @@ def api_driver_end_trip():
                 img_data = base64.b64decode(end_image_b64)
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 end_image_filename = f"trip_end_{trip_id}_{timestamp}.jpg"
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], end_image_filename)
-                with open(filepath, 'wb') as f:
-                    f.write(img_data)
+                
+                # محاولة الرفع لـ Supabase
+                uploaded = upload_image_to_supabase(end_image_filename, img_data)
+                
+                if uploaded:
+                    end_image_filename = uploaded
+                else:
+                    # Fallback - حفظ محلي
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], end_image_filename)
+                    with open(filepath, 'wb') as f:
+                        f.write(img_data)
+                    print(f"⚠ تم حفظ صورة النهاية محلياً")
             except Exception as e:
                 print(f"⚠ خطأ في حفظ صورة النهاية: {e}")
                 end_image_filename = None
@@ -3555,6 +3652,8 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("=" * 60)
     print(f"  قاعدة البيانات: {'PostgreSQL (Supabase)' if is_postgres() else 'SQLite (محلي)'}")
+    print(f"  Supabase URL: {'مضبوط ✓' if SUPABASE_URL else 'غير مضبوط ✗'}")
+    print(f"  Supabase Key: {'مضبوط ✓' if SUPABASE_SECRET_KEY else 'غير مضبوط ✗'}")
     print(f"  Driver App:  http://localhost:{port}/driver")
     print(f"  Dashboard:   http://localhost:{port}/")
     print("=" * 60)
