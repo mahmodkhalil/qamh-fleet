@@ -41,11 +41,9 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# ============== إعدادات البوت والذكاء الاصطناعي ==============
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ضع_توكن_البوت_هنا')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'ضع_مفتاح_جيميني_هنا')
 
-# ============== Supabase Storage ==============
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_SECRET_KEY = os.environ.get('SUPABASE_SECRET_KEY', '')
 SUPABASE_BUCKET = 'qamh-images'
@@ -68,7 +66,6 @@ def delete_image_from_supabase(filename):
         return response.status_code in (200, 204)
     except Exception: return False
 
-# ============== دوال مساعدة ==============
 def load_passwords():
     if not os.path.exists(PASSWORDS_FILE):
         default = {'admin_password': 'admin2026', 'viewer_password': 'qamh2026'}
@@ -962,9 +959,6 @@ def uploaded_file(filename):
 @login_required
 def reports():
     month = int(request.args.get('month', datetime.now().month)); year = int(request.args.get('year', datetime.now().year))
-    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''
-    requesting_party_id = request.args.get('requesting_party_id') or ''; report_type = request.args.get('report_type') or 'all'
-    payment_filter = request.args.get('payment_filter') or ''
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall()
@@ -972,196 +966,26 @@ def reports():
     years = list(range(2024, datetime.now().year + 2)); report_data = None
     if request.args.get('month'):
         month_str = f"{year:04d}-{month:02d}"
-        query_trips = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE t.trip_date LIKE ?"
-        params = [month_str + '%']
-        if car_id: query_trips += " AND t.car_id = ?"; params.append(car_id)
-        if driver_id: query_trips += " AND t.driver_id = ?"; params.append(driver_id)
-        if requesting_party_id: query_trips += " AND t.requesting_party_id = ?"; params.append(requesting_party_id)
-        query_trips += " ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC"
-        execute_query(cursor, query_trips, params); all_trips = cursor.fetchall()
-        query_fuel = "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?"
-        fuel_params = [month_str + '%']
-        if car_id: query_fuel += " AND f.car_id = ?"; fuel_params.append(car_id)
-        if driver_id: query_fuel += " AND f.driver_id = ?"; fuel_params.append(driver_id)
-        if payment_filter:
-            if payment_filter == 'خزان الشركة': query_fuel += " AND f.source = ?"; fuel_params.append('خزان الشركة')
-            elif payment_filter == 'كازية': query_fuel += " AND f.source = ?"; fuel_params.append('كازية')
-            else: query_fuel += " AND f.payment_status = ?"; fuel_params.append(payment_filter)
-        execute_query(cursor, query_fuel, fuel_params); all_fuel = cursor.fetchall()
-        query_maint = "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?"
-        maint_params = [month_str + '%']
-        if car_id: query_maint += " AND m.car_id = ?"; maint_params.append(car_id)
-        execute_query(cursor, query_maint, maint_params); all_maint = cursor.fetchall()
-        query_travel = "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id WHERE tm.date LIKE ?"
-        travel_params = [month_str + '%']
-        if driver_id: query_travel += " AND tm.driver_id = ?"; travel_params.append(driver_id)
-        execute_query(cursor, query_travel, travel_params); all_travel = cursor.fetchall()
-        query_overtime = "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE o.date LIKE ?"
-        overtime_params = [month_str + '%']
-        if driver_id: query_overtime += " AND o.driver_id = ?"; overtime_params.append(driver_id)
-        execute_query(cursor, query_overtime, overtime_params); all_overtime = cursor.fetchall()
-        query_checks = "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE dc.check_date LIKE ?"
-        checks_params = [month_str + '%']
-        if car_id: query_checks += " AND dc.car_id = ?"; checks_params.append(car_id)
-        if driver_id: query_checks += " AND dc.driver_id = ?"; checks_params.append(driver_id)
-        execute_query(cursor, query_checks, checks_params); all_checks = cursor.fetchall()
-
-        cars_report = []; total_trips = len(all_trips); total_km = sum(t['distance'] or 0 for t in all_trips)
-        total_liters = sum(f['liters'] or 0 for f in all_fuel)
-        gasoline_liters = sum(f['liters'] or 0 for f in all_fuel if f['fuel_type'] == 'بنزين')
-        diesel_liters = sum(f['liters'] or 0 for f in all_fuel if f['fuel_type'] == 'ديزل')
-        gasoline_cost = sum(get_effective_cost(f) for f in all_fuel if f['fuel_type'] == 'بنزين')
-        diesel_cost = sum(get_effective_cost(f) for f in all_fuel if f['fuel_type'] == 'ديزل')
-        tank_liters = sum(f['liters'] or 0 for f in all_fuel if f['source'] == 'خزان الشركة')
-        station_liters = sum(f['liters'] or 0 for f in all_fuel if f['source'] == 'كازية')
-        gateway_liters = sum(f['liters'] or 0 for f in all_fuel if f['payment_status'] == 'اشتراك شركة البوابة الذهبية')
-        total_cost = sum(get_effective_cost(f) for f in all_fuel)
-        total_maint_cost_syp = sum(m['cost'] or 0 for m in all_maint if m.get('currency', 'ل.س') == 'ل.س')
-        total_maint_cost_usd = sum(m['cost'] or 0 for m in all_maint if m.get('currency') == 'دولار')
-        if car_id: car_list = [c for c in cars_list if str(c['id']) == str(car_id)]
-        else:
-            car_ids_with_data = set(t['car_id'] for t in all_trips) | set(f['car_id'] for f in all_fuel) | set(m['car_id'] for m in all_maint) | set(dc['car_id'] for dc in all_checks)
-            car_list = [c for c in cars_list if c['id'] in car_ids_with_data]
-        for c in car_list:
-            c_trips = [t for t in all_trips if t['car_id'] == c['id']]; c_fuel = [f for f in all_fuel if f['car_id'] == c['id']]
-            c_maint = [m for m in all_maint if m['car_id'] == c['id']]; c_checks = [dc for dc in all_checks if dc['car_id'] == c['id']]
-            car_fuel_cost = sum(get_effective_cost(f) for f in c_fuel)
-            c_gasoline = sum(f['liters'] or 0 for f in c_fuel if f['fuel_type'] == 'بنزين'); c_diesel = sum(f['liters'] or 0 for f in c_fuel if f['fuel_type'] == 'ديزل')
-            c_gasoline_cost = sum(get_effective_cost(f) for f in c_fuel if f['fuel_type'] == 'بنزين'); c_diesel_cost = sum(get_effective_cost(f) for f in c_fuel if f['fuel_type'] == 'ديزل')
-            c_tank = sum(f['liters'] or 0 for f in c_fuel if f['source'] == 'خزان الشركة'); c_station = sum(f['liters'] or 0 for f in c_fuel if f['source'] == 'كازية')
-            c_gateway = sum(f['liters'] or 0 for f in c_fuel if f['payment_status'] == 'اشتراك شركة البوابة الذهبية')
-            c_total_km = sum(t['distance'] or 0 for t in c_trips); c_cost_per_km = get_car_cost_per_km(c['id'], conn); c_liters_per_100 = get_car_liters_per_100km(c['id'], conn)
-            c_maint_syp = sum(m['cost'] or 0 for m in c_maint if m.get('currency', 'ل.س') == 'ل.س'); c_maint_usd = sum(m['cost'] or 0 for m in c_maint if m.get('currency') == 'دولار')
-            c_trips_with_cost = []
-            for t in c_trips:
-                t_dict = dict(t); t_dict['cost_per_km'] = c_cost_per_km; t_dict['trip_cost'] = (t['distance'] or 0) * c_cost_per_km; c_trips_with_cost.append(t_dict)
-            cars_report.append({'car_name': c['name'], 'trips': c_trips_with_cost, 'fuel': c_fuel, 'maintenance': c_maint, 'checks': c_checks, 'checks_count': len(c_checks), 'total_km': c_total_km, 'total_liters': sum(f['liters'] or 0 for f in c_fuel), 'total_fuel_cost': car_fuel_cost, 'total_maint_cost_syp': c_maint_syp, 'total_maint_cost_usd': c_maint_usd, 'gasoline_liters': c_gasoline, 'diesel_liters': c_diesel, 'gasoline_cost': c_gasoline_cost, 'diesel_cost': c_diesel_cost, 'tank_liters': c_tank, 'station_liters': c_station, 'gateway_liters': c_gateway, 'cost_per_km': c_cost_per_km, 'liters_per_100': c_liters_per_100})
-        parties_report = []
-        for p in parties_list:
-            p_trips = [t for t in all_trips if t.get('requesting_party_id') == p['id']]
-            if not p_trips and requesting_party_id: continue
-            p_km = sum(t['distance'] or 0 for t in p_trips); p_cost = sum((t['distance'] or 0) * (get_car_estimated_cost_per_km(t['car_id'], conn) or 0) for t in p_trips)
-            parties_report.append({'party_name': p['name'], 'trips_count': len(p_trips), 'total_km': p_km, 'total_cost': p_cost})
-        drivers_report = []
-        drivers_to_report = [d for d in drivers_list if str(d['id']) == str(driver_id)] if driver_id else [d for d in drivers_list if d['id'] in (set(tm['driver_id'] for tm in all_travel) | set(o['driver_id'] for o in all_overtime) | set(t['driver_id'] for t in all_trips) | set(dc['driver_id'] for dc in all_checks))]
-        for d in drivers_to_report:
-            d_travel = [tm for tm in all_travel if tm['driver_id'] == d['id']]; d_overtime = [o for o in all_overtime if o['driver_id'] == d['id']]
-            d_trips = [t for t in all_trips if t['driver_id'] == d['id']]; d_checks = [dc for dc in all_checks if dc['driver_id'] == d['id']]
-            d_travel_count = len([tm for tm in d_travel if tm['is_travel'] == 1]); d_travel_km = sum(tm['distance_km'] or 0 for tm in d_travel if tm['is_travel'] == 1)
-            d_morning = sum(o['morning_hours'] or 0 for o in d_overtime); d_evening = sum(o['evening_hours'] or 0 for o in d_overtime)
-            drivers_report.append({'driver_name': d['name'], 'travel_missions': d_travel, 'overtimes': d_overtime, 'trips': d_trips, 'checks': d_checks, 'checks_count': len(d_checks), 'travel_count': d_travel_count, 'travel_km': d_travel_km, 'morning_hours': d_morning, 'evening_hours': d_evening, 'total_overtime': d_morning + d_evening, 'trips_count': len(d_trips)})
-        report_data = {'summary': {'total_trips': total_trips, 'total_km': total_km, 'total_liters': total_liters, 'total_fuel_cost': total_cost, 'total_maint_cost_syp': total_maint_cost_syp, 'total_maint_cost_usd': total_maint_cost_usd, 'total_checks': len(all_checks), 'gasoline_liters': gasoline_liters, 'diesel_liters': diesel_liters, 'gasoline_cost': gasoline_cost, 'diesel_cost': diesel_cost, 'tank_liters': tank_liters, 'station_liters': station_liters, 'gateway_liters': gateway_liters}, 'cars': cars_report, 'parties': parties_report, 'drivers': drivers_report}
+        execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE t.trip_date LIKE ?", (month_str + '%',)); trips = cursor.fetchall()
+        execute_query(cursor, "SELECT f.*, c.name as car_name FROM fuel f JOIN cars c ON f.car_id = c.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
+        execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?", (month_str + '%',)); maints = cursor.fetchall()
+        total_trips = len(trips); total_km = sum(t['distance'] or 0 for t in trips); total_liters = sum(f['liters'] or 0 for f in fuels)
+        total_fuel_cost = sum(get_effective_cost(f) for f in fuels)
+        total_maint_syp = sum(m['cost'] or 0 for m in maints if m.get('currency', 'ل.س') == 'ل.س')
+        total_maint_usd = sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار')
+        report_data = {'summary': {'total_trips': total_trips, 'total_km': total_km, 'total_liters': total_liters, 'total_fuel_cost': total_fuel_cost, 'total_maint_cost_syp': total_maint_syp, 'total_maint_cost_usd': total_maint_usd}}
     conn.close()
-    return render_template('reports.html', cars=cars_list, drivers=drivers_list, parties=parties_list, years=years, selected_month=month, selected_year=year, selected_car=car_id, selected_driver=driver_id, selected_party=requesting_party_id, report_data=report_data, report_type=report_type, payment_filter=payment_filter)
+    return render_template('reports.html', cars=cars_list, drivers=drivers_list, parties=parties_list, years=years, selected_month=month, selected_year=year, report_data=report_data, selected_car='', selected_driver='', selected_party='', report_type='all', payment_filter='')
 
-@app.route('/reports/export')
+@app.route('/reports/trips')
 @login_required
-def export_excel():
-    month = int(request.args.get('month', datetime.now().month)); year = int(request.args.get('year', datetime.now().year))
-    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''; requesting_party_id = request.args.get('requesting_party_id') or ''
-    report_type = request.args.get('report_type') or 'all'; payment_filter = request.args.get('payment_filter') or ''
-    month_str = f"{year:04d}-{month:02d}"
-    conn = get_connection(); cursor = conn.cursor()
-    query = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE t.trip_date LIKE ?"
-    params = [month_str + '%']
-    if car_id: query += " AND t.car_id = ?"; params.append(car_id)
-    if driver_id: query += " AND t.driver_id = ?"; params.append(driver_id)
-    if requesting_party_id: query += " AND t.requesting_party_id = ?"; params.append(requesting_party_id)
-    query += " ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC"
-    execute_query(cursor, query, params); trips = cursor.fetchall()
-    cost_per_km_map = {}
-    execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
-    for row in cursor.fetchall(): cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
-    query_f = "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?"
-    params_f = [month_str + '%']
-    if car_id: query_f += " AND f.car_id = ?"; params_f.append(car_id)
-    if driver_id: query_f += " AND f.driver_id = ?"; params_f.append(driver_id)
-    if payment_filter:
-        if payment_filter == 'خزان الشركة': query_f += " AND f.source = ?"; params_f.append('خزان الشركة')
-        elif payment_filter == 'كازية': query_f += " AND f.source = ?"; params_f.append('كازية')
-        else: query_f += " AND f.payment_status = ?"; params_f.append(payment_filter)
-    execute_query(cursor, query_f, params_f); fuels = cursor.fetchall()
-    query_m = "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?"
-    params_m = [month_str + '%']
-    if car_id: query_m += " AND m.car_id = ?"; params_m.append(car_id)
-    execute_query(cursor, query_m, params_m); maints = cursor.fetchall()
-    query_travel = "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id WHERE tm.date LIKE ?"
-    travel_params = [month_str + '%']
-    if driver_id: query_travel += " AND tm.driver_id = ?"; travel_params.append(driver_id)
-    execute_query(cursor, query_travel, travel_params); travels = cursor.fetchall()
-    query_overtime = "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE o.date LIKE ?"
-    overtime_params = [month_str + '%']
-    if driver_id: query_overtime += " AND o.driver_id = ?"; overtime_params.append(driver_id)
-    execute_query(cursor, query_overtime, overtime_params); overtimes = cursor.fetchall()
-    query_checks = "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE dc.check_date LIKE ?"
-    checks_params = [month_str + '%']
-    if car_id: query_checks += " AND dc.car_id = ?"; checks_params.append(car_id)
-    if driver_id: query_checks += " AND dc.driver_id = ?"; checks_params.append(driver_id)
-    execute_query(cursor, query_checks, checks_params); checks = cursor.fetchall()
-    
-    execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
-    conn.close()
-
-    wb = Workbook()
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
-    
-    ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
-    ws_sum.append(['التقرير الشهري الشامل', month_str])
-    ws_sum.append([])
-    ws_sum.append(['الإحصائية', 'القيمة'])
-    total_trips = len(trips); total_km = sum(t['distance'] or 0 for t in trips)
-    total_liters = sum(f['liters'] or 0 for f in fuels); total_fuel_cost = sum(get_effective_cost(f) for f in fuels)
-    total_maint_syp = sum(m['cost'] or 0 for m in maints if m.get('currency', 'ل.س') == 'ل.س'); total_maint_usd = sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار')
-    ws_sum.append(['إجمالي الرحلات', total_trips]); ws_sum.append(['إجمالي الكيلومترات', total_km]); ws_sum.append(['إجمالي اللترات', total_liters])
-    ws_sum.append(['إجمالي كلفة الوقود', total_fuel_cost]); ws_sum.append(['إجمالي كلفة الصيانة (ل.س)', total_maint_syp]); ws_sum.append(['إجمالي كلفة الصيانة (دولار)', total_maint_usd])
-    
-    for c in cars_list:
-        c_trips = [t for t in trips if t['car_id'] == c['id']]
-        c_fuel = [f for f in fuels if f['car_id'] == c['id']]
-        c_maint = [m for m in maints if m['car_id'] == c['id']]
-        if not c_trips and not c_fuel and not c_maint: continue
-        ws_c = wb.create_sheet(title=f"سيارة - {c['name'][:20]}"); ws_c.sheet_view.rightToLeft = True
-        ws_c.append([f"تقرير السيارة: {c['name']}"]); ws_c.append([])
-        ws_c.append(['الرحلات:', 'التاريخ', 'السائق', 'المسافة (كم)', 'تكلفة الرحلة'])
-        for t in c_trips:
-            cpk = cost_per_km_map.get(t['car_id']); trip_cost = ((t['distance'] or 0) * cpk) if cpk else ''
-            ws_c.append(['', t['trip_date'], t['driver_name'], t['distance'] or 0, round(trip_cost, 0) if trip_cost else ''])
-        ws_c.append([]); ws_c.append(['الوقود:', 'التاريخ', 'اللترات', 'الكلفة'])
-        for f in c_fuel: ws_c.append(['', f['fuel_date'], f['liters'] or 0, get_effective_cost(f)])
-        ws_c.append([]); ws_c.append(['الصيانة:', 'التاريخ', 'النوع', 'التكلفة', 'العملة'])
-        for m in c_maint: ws_c.append(['', m['date'], m['type'], m['cost'] or 0, m.get('currency', 'ل.س')])
-    
-    drivers_with_data = set(tm['driver_id'] for tm in travels) | set(o['driver_id'] for o in overtimes)
-    execute_query(cursor, "SELECT * FROM drivers ORDER BY name"); drivers_list = cursor.fetchall()
-    for d in drivers_list:
-        if d['id'] not in drivers_with_data: continue
-        d_travel = [tm for tm in travels if tm['driver_id'] == d['id']]; d_overtime = [o for o in overtimes if o['driver_id'] == d['id']]
-        ws_d = wb.create_sheet(title=f"سائق - {d['name'][:20]}"); ws_d.sheet_view.rightToLeft = True
-        ws_d.append([f"تقرير السائق: {d['name']}"]); ws_d.append([])
-        ws_d.append(['مهام السفر:', 'التاريخ', 'الوصف', 'المسافة (كم)'])
-        for tm in d_travel: ws_d.append(['', tm['date'], tm['description'] or '', tm['distance_km'] or 0])
-        ws_d.append([]); ws_d.append(['الساعات الإضافية:', 'التاريخ', 'صباحي', 'مسائي'])
-        for o in d_overtime: ws_d.append(['', o['date'], o['morning_hours'] or 0, o['evening_hours'] or 0])
-
-    ws3 = wb.create_sheet(f"تفاصيل الرحلات"); ws3.sheet_view.rightToLeft = True
-    headers = ['التاريخ', 'السيارة', 'السائق', 'الجهة الطالبة', 'الوجهة', 'وقت الخروج', 'وقت العودة', 'عداد البداية', 'عداد النهاية', 'المسافة (كم)', 'تكلفة/كم', 'كلفة الرحلة (ل.س)', 'ملاحظات']
-    ws3.append(headers)
-    for cell in ws3[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
-    for t in trips:
-        cpk = cost_per_km_map.get(t['car_id']); trip_cost = ((t['distance'] or 0) * cpk) if cpk else ''
-        ws3.append([t['trip_date'], t['car_name'], t['driver_name'], t['party_name'] or t['requester'] or '', t['destination'] or '', t['exit_time'] or '', t['return_time'] or '', t['start_km'] or '', t['end_km'] or '', t['distance'] or '', round(cpk, 0) if cpk else '', round(trip_cost, 0) if trip_cost else '', t['notes'] or ''])
-    for col in ws3.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col); ws3.column_dimensions[col[0].column_letter].width = max_length + 3
-
-    output = io.BytesIO(); wb.save(output); output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_report_{month_str}.xlsx')
-
-@app.route('/reports/trips/export')
-@login_required
-def export_trips_excel():
+def reports_trips():
     car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''; requesting_party_id = request.args.get('requesting_party_id') or ''
     date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
     conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers ORDER BY name"); drivers_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY name"); parties_list = cursor.fetchall()
     query = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE 1=1"
     params = []
     if car_id: query += " AND t.car_id = ?"; params.append(car_id)
@@ -1169,22 +993,94 @@ def export_trips_excel():
     if requesting_party_id: query += " AND t.requesting_party_id = ?"; params.append(requesting_party_id)
     if date_from: query += " AND t.trip_date >= ?"; params.append(date_from)
     if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
-    query += " ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC"
+    query += " ORDER BY t.trip_date DESC, t.id DESC"
     execute_query(cursor, query, params); trips = cursor.fetchall()
-    cost_per_km_map = {}
-    execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
-    for row in cursor.fetchall(): cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+    total_trips = len(trips); total_km = sum(t['distance'] or 0 for t in trips)
     conn.close()
+    summary = {'total_trips': total_trips, 'total_km': total_km}
+    return render_template('reports_trips.html', cars=cars_list, drivers=drivers_list, parties=parties_list, trips=trips, summary=summary, selected_car=car_id, selected_driver=driver_id, selected_party=requesting_party_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or requesting_party_id or date_from or date_to))
+
+@app.route('/reports/fuel')
+@login_required
+def reports_fuel():
+    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''; date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''; payment_filter = request.args.get('payment_filter') or ''
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers ORDER BY name"); drivers_list = cursor.fetchall()
+    query = "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE 1=1"
+    params = []
+    if car_id: query += " AND f.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND f.driver_id = ?"; params.append(driver_id)
+    if date_from: query += " AND f.fuel_date >= ?"; params.append(date_from)
+    if date_to: query += " AND f.fuel_date <= ?"; params.append(date_to)
+    if payment_filter:
+        if payment_filter == 'خزان الشركة': query += " AND f.source = ?"; params.append('خزان الشركة')
+        elif payment_filter == 'كازية': query += " AND f.source = ?"; params.append('كازية')
+        else: query += " AND f.payment_status = ?"; params.append(payment_filter)
+    query += " ORDER BY f.fuel_date DESC, f.km_at_fill DESC, f.id DESC"
+    execute_query(cursor, query, params); fuel_records = cursor.fetchall()
+    total_records = len(fuel_records); total_liters = sum(f['liters'] or 0 for f in fuel_records)
+    total_cost = sum(get_effective_cost(f) for f in fuel_records); avg_price = total_cost / total_liters if total_liters > 0 else 0
+    conn.close()
+    summary = {'total_records': total_records, 'total_liters': total_liters, 'total_cost': total_cost, 'avg_price': avg_price}
+    return render_template('reports_fuel.html', cars=cars_list, drivers=drivers_list, fuel_records=fuel_records, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, payment_filter=payment_filter, has_filter=bool(car_id or driver_id or date_from or date_to or payment_filter))
+
+@app.route('/reports/export')
+@login_required
+def export_excel():
+    month = int(request.args.get('month', datetime.now().month)); year = int(request.args.get('year', datetime.now().year))
+    month_str = f"{year:04d}-{month:02d}"
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE t.trip_date LIKE ?", (month_str + '%',)); trips = cursor.fetchall()
+    execute_query(cursor, "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
+    execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?", (month_str + '%',)); maints = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
+    conn.close()
+
+    wb = Workbook(); ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
+    ws_sum.append(['التقرير الشهري الشامل', month_str]); ws_sum.append([]); ws_sum.append(['الإحصائية', 'القيمة'])
+    ws_sum.append(['إجمالي الرحلات', len(trips)]); ws_sum.append(['إجمالي الكيلومترات', sum(t['distance'] or 0 for t in trips)])
+    ws_sum.append(['إجمالي اللترات', sum(f['liters'] or 0 for f in fuels)]); ws_sum.append(['إجمالي كلفة الوقود', sum(get_effective_cost(f) for f in fuels)])
+    ws_sum.append(['إجمالي كلفة الصيانة (ل.س)', sum(m['cost'] or 0 for m in maints if m.get('currency', 'ل.س') == 'ل.س')])
+    ws_sum.append(['إجمالي كلفة الصيانة (دولار)', sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار')])
+
+    for c in cars_list:
+        c_trips = [t for t in trips if t['car_id'] == c['id']]; c_fuel = [f for f in fuels if f['car_id'] == c['id']]; c_maint = [m for m in maints if m['car_id'] == c['id']]
+        if not c_trips and not c_fuel and not c_maint: continue
+        ws_c = wb.create_sheet(title=f"سيارة - {c['name'][:20]}"); ws_c.sheet_view.rightToLeft = True
+        ws_c.append([f"تقرير السيارة: {c['name']}"]); ws_c.append([])
+        ws_c.append(['الرحلات:', 'التاريخ', 'السائق', 'المسافة (كم)'])
+        for t in c_trips: ws_c.append(['', t['trip_date'], t['driver_name'], t['distance'] or 0])
+        ws_c.append([]); ws_c.append(['الوقود:', 'التاريخ', 'اللترات', 'الكلفة'])
+        for f in c_fuel: ws_c.append(['', f['fuel_date'], f['liters'] or 0, get_effective_cost(f)])
+        ws_c.append([]); ws_c.append(['الصيانة:', 'التاريخ', 'النوع', 'التكلفة', 'العملة'])
+        for m in c_maint: ws_c.append(['', m['date'], m['type'], m['cost'] or 0, m.get('currency', 'ل.س')])
+
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_report_{month_str}.xlsx')
+
+@app.route('/reports/trips/export')
+@login_required
+def export_trips_excel():
+    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''
+    date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
+    conn = get_connection(); cursor = conn.cursor()
+    query = "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE 1=1"
+    params = []
+    if car_id: query += " AND t.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND t.driver_id = ?"; params.append(driver_id)
+    if date_from: query += " AND t.trip_date >= ?"; params.append(date_from)
+    if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
+    query += " ORDER BY t.trip_date DESC, t.id DESC"
+    execute_query(cursor, query, params); trips = cursor.fetchall(); conn.close()
     wb = Workbook(); ws = wb.active; ws.title = "Trips Report"; ws.sheet_view.rightToLeft = True
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
-    headers = ['التاريخ', 'السيارة', 'السائق', 'الجهة الطالبة', 'الوجهة', 'وقت الخروج', 'وقت العودة', 'عداد البداية', 'عداد النهاية', 'المسافة (كم)', 'تكلفة/كم', 'كلفة الرحلة (ل.س)', 'ملاحظات']
+    headers = ['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)', 'ملاحظات']
     ws.append(headers)
     for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
     for t in trips:
-        cpk = cost_per_km_map.get(t['car_id']); trip_cost = ((t['distance'] or 0) * cpk) if cpk else ''
-        ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['party_name'] or t['requester'] or '', t['destination'] or '', t['exit_time'] or '', t['return_time'] or '', t['start_km'] or '', t['end_km'] or '', t['distance'] or '', round(cpk, 0) if cpk else '', round(trip_cost, 0) if trip_cost else '', t['notes'] or ''])
-    for col in ws.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col); ws.column_dimensions[col[0].column_letter].width = max_length + 3
+        ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '', t['distance'] or '', t['notes'] or ''])
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='trips_report.xlsx')
 
@@ -1199,82 +1095,17 @@ def export_fuel_excel():
     if driver_id: query += " AND f.driver_id = ?"; params.append(driver_id)
     if date_from: query += " AND f.fuel_date >= ?"; params.append(date_from)
     if date_to: query += " AND f.fuel_date <= ?"; params.append(date_to)
-    if payment_filter:
-        if payment_filter == 'خزان الشركة': query += " AND f.source = ?"; params.append('خزان الشركة')
-        elif payment_filter == 'كازية': query += " AND f.source = ?"; params.append('كازية')
-        else: query += " AND f.payment_status = ?"; params.append(payment_filter)
-    query += " ORDER BY f.fuel_date DESC, f.km_at_fill DESC, f.id DESC"
+    query += " ORDER BY f.fuel_date DESC, f.id DESC"
     execute_query(cursor, query, params); fuel_records = cursor.fetchall(); conn.close()
-
-    wb = Workbook()
+    wb = Workbook(); ws = wb.active; ws.title = "Fuel Report"; ws.sheet_view.rightToLeft = True
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
-    
-    ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
-    ws_sum.append(['التقرير العام للوقود']); ws_sum.append([])
-    ws_sum.append(['البيان', 'القيمة'])
-    ws_sum.append(['إجمالي السجلات', len(fuel_records)])
-    ws_sum.append(['إجمالي اللترات', sum(f['liters'] or 0 for f in fuel_records)])
-    ws_sum.append(['إجمالي الكلفة', sum(get_effective_cost(f) for f in fuel_records)])
-    
-    by_car = {}
+    headers = ['التاريخ', 'السيارة', 'السائق', 'اللترات', 'الكلفة']
+    ws.append(headers)
+    for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
     for f in fuel_records:
-        if f['car_name'] not in by_car: by_car[f['car_name']] = {'liters': 0, 'cost': 0}
-        by_car[f['car_name']]['liters'] += f['liters'] or 0; by_car[f['car_name']]['cost'] += get_effective_cost(f)
-    for c_name, data in by_car.items():
-        ws_c = wb.create_sheet(title=f"سيارة - {c_name[:20]}"); ws_c.sheet_view.rightToLeft = True
-        ws_c.append([f"تقرير وقود السيارة: {c_name}"]); ws_c.append([])
-        ws_c.append(['التاريخ', 'السائق', 'اللترات', 'الكلفة'])
-        for f in [x for x in fuel_records if x['car_name'] == c_name]:
-            ws_c.append([f['fuel_date'], f['driver_name'], f['liters'] or 0, get_effective_cost(f)])
-        ws_c.append([]); ws_c.append(['الإجمالي:', '', data['liters'], data['cost']])
-
+        ws.append([f['fuel_date'], f['car_name'], f['driver_name'], f['liters'] or 0, get_effective_cost(f)])
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='fuel_report.xlsx')
-
-@app.route('/reports/drivers/export')
-@login_required
-def export_drivers_excel():
-    driver_id = request.args.get('driver_id') or ''; date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT * FROM drivers ORDER BY name"); drivers_list = cursor.fetchall()
-    query_travel = "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id WHERE 1=1"
-    travel_params = []
-    if driver_id: query_travel += " AND tm.driver_id = ?"; travel_params.append(driver_id)
-    if date_from: query_travel += " AND tm.date >= ?"; travel_params.append(date_from)
-    if date_to: query_travel += " AND tm.date <= ?"; travel_params.append(date_to)
-    execute_query(cursor, query_travel, travel_params); all_travel = cursor.fetchall()
-    query_overtime = "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE 1=1"
-    overtime_params = []
-    if driver_id: query_overtime += " AND o.driver_id = ?"; overtime_params.append(driver_id)
-    if date_from: query_overtime += " AND o.date >= ?"; overtime_params.append(date_from)
-    if date_to: query_overtime += " AND o.date <= ?"; overtime_params.append(date_to)
-    execute_query(cursor, query_overtime, overtime_params); all_overtime = cursor.fetchall(); conn.close()
-
-    wb = Workbook()
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
-    drivers_with_data = set(tm['driver_id'] for tm in all_travel) | set(o['driver_id'] for o in all_overtime)
-    drivers_to_export = [d for d in drivers_list if d['id'] in drivers_with_data]
-
-    ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
-    ws_sum.append(['التقرير العام للسائقين']); ws_sum.append([])
-    ws_sum.append(['اسم السائق', 'مهام السفر', 'إجمالي الكيلومترات', 'الساعات الصباحية', 'الساعات المسائية'])
-    for d in drivers_to_export:
-        d_travel = [tm for tm in all_travel if tm['driver_id'] == d['id']]; d_overtime = [o for o in all_overtime if o['driver_id'] == d['id']]
-        t_count = len([tm for tm in d_travel if tm['is_travel'] == 1]); t_km = sum(tm['distance_km'] or 0 for tm in d_travel if tm['is_travel'] == 1)
-        m_hours = sum(o['morning_hours'] or 0 for o in d_overtime); e_hours = sum(o['evening_hours'] or 0 for o in d_overtime)
-        ws_sum.append([d['name'], t_count, t_km, m_hours, e_hours])
-
-    for d in drivers_to_export:
-        d_travel = [tm for tm in all_travel if tm['driver_id'] == d['id']]; d_overtime = [o for o in all_overtime if o['driver_id'] == d['id']]
-        ws_d = wb.create_sheet(title=f"سائق - {d['name'][:20]}"); ws_d.sheet_view.rightToLeft = True
-        ws_d.append([f"تقرير السائق: {d['name']}"]); ws_d.append([])
-        ws_d.append(['مهام السفر:', 'التاريخ', 'الوصف', 'المسافة (كم)'])
-        for tm in d_travel: ws_d.append(['', tm['date'], tm['description'] or '', tm['distance_km'] or 0])
-        ws_d.append([]); ws_d.append(['الساعات الإضافية:', 'التاريخ', 'صباحي', 'مسائي'])
-        for o in d_overtime: ws_d.append(['', o['date'], o['morning_hours'] or 0, o['evening_hours'] or 0])
-
-    output = io.BytesIO(); wb.save(output); output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='drivers_report.xlsx')
 # ============== Driver App API ==============
 @app.route('/driver')
 def driver_app(): return render_template('driver_app.html')
