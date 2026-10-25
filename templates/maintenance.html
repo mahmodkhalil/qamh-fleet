@@ -1,7 +1,5 @@
 {% extends "base.html" %}
-
 {% block title %}الصيانة - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
-
 {% block content %}
 
 <div class="card">
@@ -71,27 +69,34 @@
                     <input type="number" step="0.01" name="cost" value="{{ edit_maintenance.cost or '' }}">
                 </div>
                 <div class="form-group">
+                    <label>💱 العملة</label>
+                    <select name="currency">
+                        <option value="ل.س" {% if edit_maintenance.get('currency', 'ل.س') == 'ل.س' %}selected{% endif %}>ليرة سورية (ل.س)</option>
+                        <option value="دولار" {% if edit_maintenance.get('currency') == 'دولار' %}selected{% endif %}>دولار أمريكي ($)</option>
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>🧾 رقم الفاتورة</label>
                     <input type="text" name="invoice_number" value="{{ edit_maintenance.invoice_number or '' }}">
                 </div>
+            </div>
+            
+            <div class="form-row">
                 <div class="form-group">
                     <label>🏪 الورشة / المكان</label>
                     <input type="text" name="workshop" value="{{ edit_maintenance.workshop or '' }}">
                 </div>
-            </div>
-            
-            <div class="form-row">
                 <div class="form-group">
                     <label>⏰ العداد للصيانة القادمة (كم)</label>
                     <input type="number" step="0.1" name="next_service_km" value="{{ edit_maintenance.next_service_km or '' }}">
                 </div>
+            </div>
+            
+            <div class="form-row">
                 <div class="form-group">
                     <label>📅 تاريخ الصيانة القادمة</label>
                     <input type="date" name="next_service_date" value="{{ edit_maintenance.next_service_date or '' }}">
                 </div>
-            </div>
-            
-            <div class="form-row">
                 <div class="form-group">
                     <label>📷 صورة الفاتورة (اختياري)</label>
                     <input type="file" name="invoice_image" accept="image/*,.pdf">
@@ -101,10 +106,11 @@
                     </p>
                     {% endif %}
                 </div>
-                <div class="form-group">
-                    <label>📝 ملاحظات</label>
-                    <input type="text" name="notes" value="{{ edit_maintenance.notes or '' }}">
-                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>📝 ملاحظات</label>
+                <input type="text" name="notes" value="{{ edit_maintenance.notes or '' }}">
             </div>
             
             <button type="submit" class="btn btn-success">💾 حفظ التعديل</button>
@@ -177,35 +183,43 @@
                 <input type="number" step="0.01" name="cost">
             </div>
             <div class="form-group">
+                <label>💱 العملة *</label>
+                <select name="currency" required>
+                    <option value="ل.س" selected>ليرة سورية (ل.س)</option>
+                    <option value="دولار">دولار أمريكي ($)</option>
+                </select>
+            </div>
+            <div class="form-group">
                 <label>🧾 رقم الفاتورة</label>
                 <input type="text" name="invoice_number">
             </div>
+        </div>
+        
+        <div class="form-row">
             <div class="form-group">
                 <label>🏪 الورشة / المكان</label>
                 <input type="text" name="workshop">
             </div>
-        </div>
-        
-        <div class="form-row">
             <div class="form-group">
                 <label>⏰ العداد للصيانة القادمة (كم)</label>
                 <input type="number" step="0.1" name="next_service_km">
             </div>
-            <div class="form-group">
-                <label>📅 تاريخ الصيانة القادمة</label>
-                <input type="date" name="next_service_date">
-            </div>
         </div>
         
         <div class="form-row">
             <div class="form-group">
+                <label>📅 تاريخ الصيانة القادمة</label>
+                <input type="date" name="next_service_date">
+            </div>
+            <div class="form-group">
                 <label>📷 صورة الفاتورة (اختياري)</label>
                 <input type="file" name="invoice_image" accept="image/*,.pdf">
             </div>
-            <div class="form-group">
-                <label>📝 ملاحظات</label>
-                <input type="text" name="notes">
-            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>📝 ملاحظات</label>
+            <input type="text" name="notes">
         </div>
         
         <button type="submit" class="btn btn-success">💾 حفظ الصيانة</button>
@@ -223,6 +237,7 @@
                     <th>الفئة</th>
                     <th>العداد</th>
                     <th>التكلفة</th>
+                    <th>العملة</th>
                     <th>الفاتورة</th>
                     <th>الصيانة القادمة</th>
                     {% if is_admin %}<th>إجراءات</th>{% endif %}
@@ -243,6 +258,13 @@
                     </td>
                     <td>{{ m.km_at_service or '-' }}</td>
                     <td style="font-weight:600;color:#1e3a5f;">{{ m.cost or '-' }}</td>
+                    <td>
+                        {% if m.get('currency', 'ل.س') == 'دولار' %}
+                        <span class="badge" style="background:#c6f6d5;color:#22543d;">$</span>
+                        {% else %}
+                        <span class="badge" style="background:#fed7d7;color:#742a2a;">ل.س</span>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if m.invoice_number %}{{ m.invoice_number }}<br>{% endif %}
                         {% if m.invoice_image %}
