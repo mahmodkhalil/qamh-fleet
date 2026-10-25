@@ -529,7 +529,7 @@ def ensure_pending_fuel_table():
         if is_postgres():
             execute_query(cursor, """
                 CREATE TABLE IF NOT EXISTS pending_fuel (
-                    id SERIAL PRIMARY KEY, driver_id INTEGER NOT NULL, car_id INTEGER NOT NULL,
+                    id SERIAL PRIMARY KEY, driver_id INTEGER, car_id INTEGER,
                     fuel_date TEXT NOT NULL, fuel_time TEXT, liters REAL, price_per_liter REAL,
                     total_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT,
                     notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT
@@ -542,7 +542,7 @@ def ensure_pending_fuel_table():
         else:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS pending_fuel (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER NOT NULL, car_id INTEGER NOT NULL,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER, car_id INTEGER,
                     fuel_date TEXT NOT NULL, fuel_time TEXT, liters REAL, price_per_liter REAL,
                     total_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT,
                     notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT
@@ -618,7 +618,7 @@ def send_telegram_message(chat_id, text):
     try: requests.post(url, json=payload, timeout=10)
     except Exception as e: print(f"⚠ خطأ في إرسال رسالة تلغرام: {e}")
 
-def extract_data_from_images(car_img_b64, station_img_b64):
+def extract_data_from_images(car_img_b64):
     if not GEMINI_API_KEY or GEMINI_API_KEY == 'ضع_مفتاح_جيميني_هنا':
         return {'km': None, 'liters': None, 'error': 'مفتاح API غير مضبوط'}
     try:
@@ -628,7 +628,7 @@ def extract_data_from_images(car_img_b64, station_img_b64):
         if car_img_b64:
             data = car_img_b64.split(',')[1] if ',' in car_img_b64 else car_img_b64
             parts.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
-            parts.append("هذه صورة عداد السيارة. استخرج قراءة العداد كرقم صحيح (مثال: 51756).")
+            parts.append("هذه صورة عداد. استخرج الرقم الظاهر كقراءة للعداد كرقم صحيح (مثال: 51756). إذا كانت صورة عداد كازية استخرج عدد اللترات.")
         
         parts.append("الرجاء إرجاع النتيجة بصيغة JSON فقط كالتالي: {\"km\": 51756, \"liters\": null}")
         
@@ -2401,43 +2401,25 @@ def telegram_webhook():
                 with open(filepath, 'wb') as f: f.write(img_data)
                 
                 img_b64 = base64.b64encode(img_data).decode('utf-8')
-                extracted = extract_data_from_images(img_b64, None)
+                extracted = extract_data_from_images(img_b64)
                 
-                send_telegram_message(chat_id, f"✅ تم استلام الصورة. العداد المقروء: {extracted['km']} كم. يرجى كتابة: [اسم السيارة] [اللترات] [الكلفة]")
+                conn = get_connection()
+                cursor = conn.cursor()
+                now = datetime.now() + timedelta(hours=3)
+                execute_query(cursor, """
+                    INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image)
+                    VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورة عداد مرسلة من تلغرام. النص: {text}", filename))
+                conn.commit()
+                conn.close()
+                
+                send_telegram_message(chat_id, "✅ تم استلام الصورة وحفظها كطلب تعبئة معلق. بانتظار مراجعة الإدارة.")
             except Exception as e:
-                send_telegram_message(chat_id, "❌ خطأ في معالجة الصورة.")
+                send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
                 
         elif text:
-            try:
-                # تنظيف النص من الأقواس والرموز الزائدة
-                clean_text = text.replace('[', '').replace(']', '').strip()
-                parts = clean_text.split()
-                if len(parts) >= 3:
-                    car_name = parts[0]
-                    liters = float(parts[1])
-                    cost = float(parts[2])
-                    
-                    conn = get_connection()
-                    cursor = conn.cursor()
-                    execute_query(cursor, "SELECT id FROM cars WHERE name LIKE ?", (f"%{car_name}%",))
-                    car_row = cursor.fetchone()
-                    
-                    if car_row:
-                        now = datetime.now() + timedelta(hours=3)
-                        execute_query(cursor, """
-                            INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, total_cost, status, created_at, notes)
-                            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-                        """, (1, car_row['id'], now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), liters, cost, now.strftime('%Y-%m-%d %H:%M:%S'), f"من تلغرام: {text}"))
-                        conn.commit()
-                        conn.close()
-                        send_telegram_message(chat_id, "✅ تم حفظ طلب التعبئة بنجاح، بانتظار موافقة الإدارة.")
-                    else:
-                        send_telegram_message(chat_id, "❌ لم يتم العثور على السيارة. تأكد من الاسم.")
-                        conn.close()
-                else:
-                    send_telegram_message(chat_id, "❌ صيغة غير صحيحة. أرسل: [اسم السيارة] [اللترات] [الكلفة]")
-            except Exception as e:
-                send_telegram_message(chat_id, f"❌ خطأ: {str(e)}")
+            # تم إلغاء استقبال النصوص من السائق لتجنب الأخطاء، البيانات يدخلها المسؤول
+            send_telegram_message(chat_id, "ℹ️ تم استلام رسالتك. يرجى إرسال الصور فقط، وسيقوم المسؤول بإدخال البيانات.")
     return jsonify({'status': 'ok'})
 
 @app.route('/admin/pending_fuel')
@@ -2447,12 +2429,16 @@ def admin_pending_fuel():
     cursor = conn.cursor()
     execute_query(cursor, """
         SELECT pf.*, d.name as driver_name, c.name as car_name
-        FROM pending_fuel pf JOIN drivers d ON pf.driver_id = d.id JOIN cars c ON pf.car_id = c.id
+        FROM pending_fuel pf LEFT JOIN drivers d ON pf.driver_id = d.id LEFT JOIN cars c ON pf.car_id = c.id
         WHERE pf.status = 'pending' ORDER BY pf.id DESC
     """)
     pending_fuels = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name")
+    cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name")
+    drivers_list = cursor.fetchall()
     conn.close()
-    return render_template('admin_pending_fuel.html', pending_fuels=pending_fuels)
+    return render_template('admin_pending_fuel.html', pending_fuels=pending_fuels, cars=cars_list, drivers=drivers_list)
 
 @app.route('/admin/pending_fuel/approve/<int:req_id>', methods=['POST'])
 @admin_required
@@ -2462,10 +2448,23 @@ def approve_pending_fuel(req_id):
     execute_query(cursor, "SELECT * FROM pending_fuel WHERE id=?", (req_id,))
     req = cursor.fetchone()
     if req:
+        fuel_date = request.form.get('fuel_date') or req['fuel_date']
+        car_id = request.form.get('car_id')
+        driver_id = request.form.get('driver_id') or None
+        fuel_type = request.form.get('fuel_type', 'بنزين')
+        source = request.form.get('source', 'كازية')
+        payment_status = request.form.get('payment_status', '')
+        liters = request.form.get('liters') or None
+        price = request.form.get('price_per_liter') or None
+        total = request.form.get('total_cost') or None
+        final = request.form.get('final_cost') or None
+        km = request.form.get('km_at_fill') or None
+        notes = request.form.get('notes', '')
+        
         execute_query(cursor, """
-            INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, km_at_fill, notes)
-            VALUES (?, ?, ?, ?, 'كازية', 'مدفوعة من قسم الحركة', ?, ?, ?, ?, ?)
-        """, (req['fuel_date'], req['car_id'], req['driver_id'], 'بنزين', request.form.get('liters'), request.form.get('price_per_liter'), request.form.get('total_cost'), request.form.get('km_at_fill'), 'تمت الإضافة عبر بوت التلغرام - ' + (req['notes'] or '')))
+            INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes))
         execute_query(cursor, "UPDATE pending_fuel SET status='approved' WHERE id=?", (req_id,))
         conn.commit()
         flash('تمت الموافقة وإدخال التعبئة في النظام بنجاح', 'success')
