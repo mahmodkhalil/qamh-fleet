@@ -1,7 +1,12 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, send_from_directory, jsonify
 from werkzeug.utils import secure_filename
 from functools import wraps
-import sqlite3, json, sys, subprocess, os, base64
+import sqlite3
+import json
+import sys
+import subprocess
+import os
+import base64
 from datetime import datetime, timedelta
 import io
 from openpyxl import Workbook
@@ -9,12 +14,14 @@ from openpyxl.styles import Font, Alignment, PatternFill
 import requests
 from google import genai
 
+# ============== اتصال قاعدة البيانات ==============
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
     HAS_POSTGRES = True
 except ImportError:
     HAS_POSTGRES = False
+    print("⚠ psycopg2 غير مثبت. سيتم استخدام SQLite فقط.")
 
 app = Flask(__name__)
 app.secret_key = 'qamh_fleet_secret_2026'
@@ -25,6 +32,7 @@ UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
 PASSWORDS_FILE = os.path.join(DATA_DIR, 'passwords.json')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 DATABASE_URL = os.environ.get('DATABASE_URL')
+
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
@@ -45,7 +53,7 @@ def upload_image_to_supabase(filename, img_data):
         headers = {'Authorization': f'Bearer {SUPABASE_SECRET_KEY}', 'Content-Type': 'image/jpeg', 'x-upsert': 'true'}
         response = requests.post(url, headers=headers, data=img_data, timeout=30)
         return filename if response.status_code in (200, 201) else None
-    except Exception as e: print(f"⚠ خطأ في رفع الصورة: {e}"); return None
+    except Exception as e: print(f"⚠ خطأ في رفع الصورة لـ Supabase: {e}"); return None
 
 def delete_image_from_supabase(filename):
     if not filename or not SUPABASE_URL or not SUPABASE_SECRET_KEY: return False
@@ -54,7 +62,7 @@ def delete_image_from_supabase(filename):
         headers = {'Authorization': f'Bearer {SUPABASE_SECRET_KEY}'}
         response = requests.delete(url, headers=headers, timeout=30)
         return response.status_code in (200, 204)
-    except: return False
+    except Exception: return False
 
 def load_passwords():
     if not os.path.exists(PASSWORDS_FILE):
@@ -63,7 +71,7 @@ def load_passwords():
         return default
     try:
         with open(PASSWORDS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-    except: return {'admin_password': 'admin2026', 'viewer_password': 'qamh2026'}
+    except Exception: return {'admin_password': 'admin2026', 'viewer_password': 'qamh2026'}
 
 def save_passwords(data):
     with open(PASSWORDS_FILE, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, indent=4)
@@ -78,6 +86,7 @@ def get_connection():
         conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row; return conn
 
 def is_postgres(): return DATABASE_URL is not None
+
 def execute_query(cursor, query, params=()):
     if is_postgres(): query = query.replace('?', '%s')
     cursor.execute(query, params); return cursor
@@ -95,14 +104,43 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not is_admin(): flash('هذا الإجراء متاح للمسؤول فقط', 'error'); return redirect(url_for('index'))
+        if not is_admin():
+            flash('هذا الإجراء متاح للمسؤول فقط', 'error'); return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated_function
 
-def get_effective_cost(f):
-    if f['source'] == 'خزان الشركة': return 0
+def get_car_current_km(car_id):
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT MAX(end_km) as max_km FROM trips WHERE car_id=? AND end_km IS NOT NULL", (car_id,)); row = cursor.fetchone(); trip_km = row['max_km'] if row else None
+    execute_query(cursor, "SELECT MAX(km_at_service) as max_km FROM maintenance WHERE car_id=? AND km_at_service IS NOT NULL", (car_id,)); row = cursor.fetchone(); maint_km = row['max_km'] if row else None
+    execute_query(cursor, "SELECT MAX(km_at_fill) as max_km FROM fuel WHERE car_id=? AND km_at_fill IS NOT NULL", (car_id,)); row = cursor.fetchone(); fuel_km = row['max_km'] if row else None
+    conn.close()
+    candidates = [x for x in [trip_km, maint_km, fuel_km] if x is not None]
+    return max(candidates) if candidates else 0
+
+def get_maintenance_alerts():
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.next_service_km IS NOT NULL AND m.category = 'دورية' ORDER BY m.car_id, m.km_at_service DESC")
+    all_maint = cursor.fetchall(); conn.close()
+    latest_per_car = {}
+    for m in all_maint:
+        if m['car_id'] not in latest_per_car: latest_per_car[m['car_id']] = m
+    alerts = []
+    for car_id, m in latest_per_car.items():
+        current_km = get_car_current_km(car_id); next_km = m['next_service_km']; remaining = next_km - current_km
+        if remaining <= 0: status = 'red'; message = f"تجاوزت الصيانة بـ {abs(remaining):.0f} كم"
+        elif remaining <= 500: status = 'yellow'; message = f"باقي {remaining:.0f} كم للصيانة"
+        else: continue
+        alerts.append({'car_name': m['car_name'], 'car_id': car_id, 'type': m['type'], 'current_km': current_km, 'next_km': next_km, 'remaining': remaining, 'status': status, 'message': message, 'last_date': m['date']})
+    alerts.sort(key=lambda x: x['remaining']); return alerts
+
+def should_count_cost(f):
+    if f['source'] == 'خزان الشركة': return False
     ps = f['payment_status'] or ''
-    if ps not in ('مدفوعه من قسم الحركه', 'مدفوعة من قسم الحركة'): return 0
+    return ps in ('مدفوعه من قسم الحركه', 'مدفوعة من قسم الحركة')
+
+def get_effective_cost(f):
+    if not should_count_cost(f): return 0
     return f['final_cost'] if f['final_cost'] else (f['total_cost'] or 0)
 
 def get_estimated_cost(f):
@@ -113,78 +151,155 @@ def get_estimated_cost(f):
         except: return 0
     return 0
 
-def get_maintenance_alerts():
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.next_service_km IS NOT NULL AND m.category = 'دورية' ORDER BY m.car_id, m.km_at_service DESC")
-    all_maint = cursor.fetchall(); conn.close(); latest = {}
-    for m in all_maint:
-        if m['car_id'] not in latest: latest[m['car_id']] = m
-    alerts = []
-    for car_id, m in latest.items():
-        conn2 = get_connection(); cur2 = conn2.cursor()
-        execute_query(cur2, "SELECT MAX(end_km) as max_km FROM trips WHERE car_id=? AND end_km IS NOT NULL", (car_id,))
-        row = cur2.fetchone(); trip_km = row['max_km'] if row else None
-        execute_query(cur2, "SELECT MAX(km_at_service) as max_km FROM maintenance WHERE car_id=? AND km_at_service IS NOT NULL", (car_id,))
-        row = cur2.fetchone(); maint_km = row['max_km'] if row else None
-        conn2.close()
-        current_km = max([x for x in [trip_km, maint_km] if x is not None]) if (trip_km or maint_km) else 0
-        remaining = m['next_service_km'] - current_km
-        if remaining <= 0: status = 'red'; message = f"تجاوزت الصيانة بـ {abs(remaining):.0f} كم"
-        elif remaining <= 500: status = 'yellow'; message = f"باقي {remaining:.0f} كم"
-        else: continue
-        alerts.append({'car_name': m['car_name'], 'status': status, 'message': message, 'current_km': current_km, 'next_km': m['next_service_km'], 'remaining': remaining, 'last_date': m['date']})
-    alerts.sort(key=lambda x: x['remaining']); return alerts
+def get_car_cost_per_km(car_id, conn=None):
+    close_conn = False
+    if conn is None: conn = get_connection(); close_conn = True
+    cursor = conn.cursor(); execute_query(cursor, "SELECT * FROM fuel WHERE car_id=? AND km_at_fill IS NOT NULL ORDER BY km_at_fill ASC, fuel_date ASC", (car_id,)); fills = cursor.fetchall()
+    if close_conn: conn.close()
+    total_km = 0; total_cost = 0
+    for i in range(1, len(fills)):
+        prev_km = fills[i-1]['km_at_fill']; curr_km = fills[i]['km_at_fill']
+        if prev_km is None or curr_km is None: continue
+        period_km = curr_km - prev_km
+        if period_km <= 0: continue
+        total_km += period_km; total_cost += get_estimated_cost(fills[i])
+    return total_cost / total_km if total_km > 0 else 0
 
-def get_last_daily_check(car_id):
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT dc.*, d.name as driver_name FROM daily_checks dc JOIN drivers d ON dc.driver_id = d.id WHERE dc.car_id = ? ORDER BY dc.id DESC LIMIT 1", (car_id,))
-    check = cursor.fetchone(); conn.close()
-    if not check: return None
-    try: check_dt = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M:%S")
+def get_car_liters_per_100km(car_id, conn=None):
+    close_conn = False
+    if conn is None: conn = get_connection(); close_conn = True
+    cursor = conn.cursor(); execute_query(cursor, "SELECT * FROM fuel WHERE car_id=? AND km_at_fill IS NOT NULL ORDER BY km_at_fill ASC, fuel_date ASC", (car_id,)); fills = cursor.fetchall()
+    if close_conn: conn.close()
+    total_km = 0; total_liters = 0
+    for i in range(1, len(fills)):
+        prev_km = fills[i-1]['km_at_fill']; curr_km = fills[i]['km_at_fill']
+        if prev_km is None or curr_km is None: continue
+        period_km = curr_km - prev_km
+        if period_km <= 0: continue
+        total_km += period_km; total_liters += fills[i]['liters'] or 0
+    return (total_liters / total_km) * 100 if total_km > 0 else 0
+
+def get_last_station_price_per_liter(car_id, conn=None):
+    close_conn = False
+    if conn is None: conn = get_connection(); close_conn = True
+    cursor = conn.cursor(); execute_query(cursor, "SELECT fuel_type FROM cars WHERE id = ?", (car_id,)); car = cursor.fetchone()
+    car_fuel_type = car['fuel_type'] if car else None
+    if not car_fuel_type:
+        if close_conn: conn.close()
+        return None
+    execute_query(cursor, "SELECT price_per_liter FROM fuel WHERE car_id = ? AND source = 'كازية' AND fuel_type = ? AND price_per_liter IS NOT NULL AND price_per_liter > 0 ORDER BY fuel_date DESC, id DESC LIMIT 1", (car_id, car_fuel_type)); row = cursor.fetchone()
+    price = None
+    if row and row['price_per_liter']:
+        try: price = float(row['price_per_liter'])
+        except: pass
+    if price is None:
+        execute_query(cursor, "SELECT price_per_liter FROM fuel WHERE source = 'كازية' AND fuel_type = ? AND price_per_liter IS NOT NULL AND price_per_liter > 0 ORDER BY fuel_date DESC, id DESC LIMIT 1", (car_fuel_type,)); row = cursor.fetchone()
+        if row and row['price_per_liter']:
+            try: price = float(row['price_per_liter'])
+            except: pass
+    if close_conn: conn.close()
+    return price
+
+def get_car_estimated_cost_per_km(car_id, conn=None):
+    close_conn = False
+    if conn is None: conn = get_connection(); close_conn = True
+    cursor = conn.cursor(); execute_query(cursor, "SELECT expected_consumption FROM cars WHERE id = ?", (car_id,)); car = cursor.fetchone(); expected = car['expected_consumption'] if car else None
+    if not expected:
+        if close_conn: conn.close()
+        return None
+    try: expected = float(expected)
     except:
-        try: check_dt = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M")
+        if close_conn: conn.close()
+        return None
+    if expected <= 0:
+        if close_conn: conn.close()
+        return None
+    price = get_last_station_price_per_liter(car_id, conn)
+    if price is None:
+        if close_conn: conn.close()
+        return None
+    if close_conn: conn.close()
+    return (expected * price) / 100
+
+def get_requesting_parties(active_only=True, conn=None):
+    close_conn = False
+    if conn is None: conn = get_connection(); close_conn = True
+    cursor = conn.cursor()
+    if active_only: execute_query(cursor, "SELECT * FROM requesting_parties WHERE active=1 ORDER BY name")
+    else: execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY name")
+    parties = cursor.fetchall()
+    if close_conn: conn.close()
+    return parties
+
+def get_last_daily_check(car_id, conn=None):
+    close_conn = False
+    if conn is None: conn = get_connection(); close_conn = True
+    cursor = conn.cursor(); execute_query(cursor, "SELECT dc.*, d.name as driver_name FROM daily_checks dc JOIN drivers d ON dc.driver_id = d.id WHERE dc.car_id = ? ORDER BY dc.id DESC LIMIT 1", (car_id,)); check = cursor.fetchone()
+    if close_conn: conn.close()
+    if not check: return None
+    try: check_datetime = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M:%S")
+    except:
+        try: check_datetime = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M")
         except: return None
-    if (datetime.now() - check_dt).total_seconds() / 3600 < 3: return dict(check)
+    hours_since = (datetime.now() - check_datetime).total_seconds() / 3600
+    if hours_since < 3: return dict(check)
     return None
 
-def get_busy_driver_ids():
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT DISTINCT driver_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'")
-    rows = cursor.fetchall(); conn.close()
-    return {r['driver_id'] for r in rows}
+def needs_daily_check(car_id, conn=None): return get_last_daily_check(car_id, conn) is None
 
-def get_busy_car_ids():
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT DISTINCT car_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'")
-    rows = cursor.fetchall(); conn.close()
-    return {r['car_id'] for r in rows}
+def get_busy_driver_ids(conn=None):
+    close_conn = False
+    if conn is None: conn = get_connection(); close_conn = True
+    cursor = conn.cursor(); execute_query(cursor, "SELECT DISTINCT driver_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'"); rows = cursor.fetchall()
+    if close_conn: conn.close()
+    return {row['driver_id'] for row in rows}
 
-# ============== إنشاء الجداول ==============
+def get_busy_car_ids(conn=None):
+    close_conn = False
+    if conn is None: conn = get_connection(); close_conn = True
+    cursor = conn.cursor(); execute_query(cursor, "SELECT DISTINCT car_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'"); rows = cursor.fetchall()
+    if close_conn: conn.close()
+    return {row['car_id'] for row in rows}
+    # ============== دوال إنشاء الجداول ==============
 def ensure_all_tables():
-    conn = get_connection(); cursor = conn.cursor()
-    if is_postgres():
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS cars (id SERIAL PRIMARY KEY, name TEXT, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1, expected_consumption REAL DEFAULT 0, fuel_type TEXT DEFAULT '')")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS drivers (id SERIAL PRIMARY KEY, name TEXT, phone TEXT, notes TEXT, active INTEGER DEFAULT 1)")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS requesting_parties (id SERIAL PRIMARY KEY, name TEXT, notes TEXT, active INTEGER DEFAULT 1)")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS trips (id SERIAL PRIMARY KEY, trip_date TEXT, car_id INTEGER, driver_id INTEGER, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, requesting_party_id INTEGER, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT, start_image TEXT, end_image TEXT, start_time TEXT, end_time TEXT, trip_source TEXT DEFAULT 'manual', driver_confirmed INTEGER DEFAULT 0, admin_seen INTEGER DEFAULT 0, admin_seen_at TEXT)")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS fuel (id SERIAL PRIMARY KEY, fuel_date TEXT, car_id INTEGER, driver_id INTEGER, fuel_type TEXT, source TEXT, payment_status TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, notes TEXT, car_image TEXT, station_image TEXT)")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS maintenance (id SERIAL PRIMARY KEY, date TEXT, car_id INTEGER, type TEXT, category TEXT, km_at_service REAL, cost REAL, invoice_number TEXT, invoice_image TEXT, workshop TEXT, notes TEXT, next_service_km REAL, next_service_date TEXT, currency TEXT DEFAULT 'ل.س')")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS daily_checks (id SERIAL PRIMARY KEY, check_date TEXT, check_time TEXT, car_id INTEGER, driver_id INTEGER, km_at_check REAL, oil_checked INTEGER DEFAULT 0, radiator_checked INTEGER DEFAULT 0, tires_checked INTEGER DEFAULT 0, battery_checked INTEGER DEFAULT 0, belts_checked INTEGER DEFAULT 0, oil_notes TEXT, radiator_notes TEXT, tires_notes TEXT, battery_notes TEXT, belts_notes TEXT, oil_image TEXT, radiator_image TEXT, tires_image TEXT, battery_image TEXT, belts_image TEXT, general_notes TEXT, admin_notes TEXT, has_issue INTEGER DEFAULT 0, created_at TEXT)")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS pending_fuel (id SERIAL PRIMARY KEY, driver_id INTEGER, car_id INTEGER, fuel_date TEXT, fuel_time TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT, notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT)")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS travel_missions (id SERIAL PRIMARY KEY, date TEXT, driver_id INTEGER, description TEXT, distance_km REAL DEFAULT 0, is_travel INTEGER DEFAULT 0, departure_time TEXT, return_time TEXT, notes TEXT)")
-        execute_query(cursor, "CREATE TABLE IF NOT EXISTS overtime (id SERIAL PRIMARY KEY, date TEXT, driver_id INTEGER, morning_hours REAL DEFAULT 0, evening_hours REAL DEFAULT 0, notes TEXT)")
-    else:
-        cursor.execute("CREATE TABLE IF NOT EXISTS cars (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1, expected_consumption REAL DEFAULT 0, fuel_type TEXT DEFAULT '')")
-        cursor.execute("CREATE TABLE IF NOT EXISTS drivers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, phone TEXT, notes TEXT, active INTEGER DEFAULT 1)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS requesting_parties (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, notes TEXT, active INTEGER DEFAULT 1)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS trips (id INTEGER PRIMARY KEY AUTOINCREMENT, trip_date TEXT, car_id INTEGER, driver_id INTEGER, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, requesting_party_id INTEGER, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT, start_image TEXT, end_image TEXT, start_time TEXT, end_time TEXT, trip_source TEXT DEFAULT 'manual', driver_confirmed INTEGER DEFAULT 0, admin_seen INTEGER DEFAULT 0, admin_seen_at TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS fuel (id INTEGER PRIMARY KEY AUTOINCREMENT, fuel_date TEXT, car_id INTEGER, driver_id INTEGER, fuel_type TEXT, source TEXT, payment_status TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, notes TEXT, car_image TEXT, station_image TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS maintenance (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, car_id INTEGER, type TEXT, category TEXT, km_at_service REAL, cost REAL, invoice_number TEXT, invoice_image TEXT, workshop TEXT, notes TEXT, next_service_km REAL, next_service_date TEXT, currency TEXT DEFAULT 'ل.س')")
-        cursor.execute("CREATE TABLE IF NOT EXISTS daily_checks (id INTEGER PRIMARY KEY AUTOINCREMENT, check_date TEXT, check_time TEXT, car_id INTEGER, driver_id INTEGER, km_at_check REAL, oil_checked INTEGER DEFAULT 0, radiator_checked INTEGER DEFAULT 0, tires_checked INTEGER DEFAULT 0, battery_checked INTEGER DEFAULT 0, belts_checked INTEGER DEFAULT 0, oil_notes TEXT, radiator_notes TEXT, tires_notes TEXT, battery_notes TEXT, belts_notes TEXT, oil_image TEXT, radiator_image TEXT, tires_image TEXT, battery_image TEXT, belts_image TEXT, general_notes TEXT, admin_notes TEXT, has_issue INTEGER DEFAULT 0, created_at TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS pending_fuel (id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER, car_id INTEGER, fuel_date TEXT, fuel_time TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT, notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS travel_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, driver_id INTEGER, description TEXT, distance_km REAL DEFAULT 0, is_travel INTEGER DEFAULT 0, departure_time TEXT, return_time TEXT, notes TEXT)")
-        cursor.execute("CREATE TABLE IF NOT EXISTS overtime (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT, driver_id INTEGER, morning_hours REAL DEFAULT 0, evening_hours REAL DEFAULT 0, notes TEXT)")
-    conn.commit(); conn.close()
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        if is_postgres():
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS cars (id SERIAL PRIMARY KEY, name TEXT NOT NULL, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
+            execute_query(cursor, "ALTER TABLE cars ADD COLUMN IF NOT EXISTS expected_consumption REAL DEFAULT 0")
+            execute_query(cursor, "ALTER TABLE cars ADD COLUMN IF NOT EXISTS fuel_type TEXT DEFAULT ''")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS drivers (id SERIAL PRIMARY KEY, name TEXT NOT NULL, phone TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS requesting_parties (id SERIAL PRIMARY KEY, name TEXT NOT NULL, notes TEXT, active INTEGER DEFAULT 1)""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS trips (id SERIAL PRIMARY KEY, trip_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, requesting_party_id INTEGER, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT, start_image TEXT, end_image TEXT, start_time TEXT, end_time TEXT, trip_source TEXT DEFAULT 'manual', driver_confirmed INTEGER DEFAULT 0, admin_seen INTEGER DEFAULT 0, admin_seen_at TEXT)""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS fuel (id SERIAL PRIMARY KEY, fuel_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER, fuel_type TEXT, source TEXT, payment_status TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, notes TEXT, car_image TEXT, station_image TEXT)""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS maintenance (id SERIAL PRIMARY KEY, date TEXT NOT NULL, car_id INTEGER NOT NULL, type TEXT, category TEXT, km_at_service REAL, cost REAL, invoice_number TEXT, invoice_image TEXT, workshop TEXT, notes TEXT, next_service_km REAL, next_service_date TEXT, currency TEXT DEFAULT 'ل.س')""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS travel_missions (id SERIAL PRIMARY KEY, date TEXT NOT NULL, driver_id INTEGER NOT NULL, description TEXT, distance_km REAL DEFAULT 0, is_travel INTEGER DEFAULT 0, departure_time TEXT, return_time TEXT, notes TEXT)""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS overtime (id SERIAL PRIMARY KEY, date TEXT NOT NULL, driver_id INTEGER NOT NULL, morning_hours REAL DEFAULT 0, evening_hours REAL DEFAULT 0, notes TEXT)""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS daily_checks (id SERIAL PRIMARY KEY, check_date TEXT NOT NULL, check_time TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, km_at_check REAL, oil_checked INTEGER DEFAULT 0, radiator_checked INTEGER DEFAULT 0, tires_checked INTEGER DEFAULT 0, battery_checked INTEGER DEFAULT 0, belts_checked INTEGER DEFAULT 0, oil_notes TEXT, radiator_notes TEXT, tires_notes TEXT, battery_notes TEXT, belts_notes TEXT, oil_image TEXT, radiator_image TEXT, tires_image TEXT, battery_image TEXT, belts_image TEXT, general_notes TEXT, admin_notes TEXT, has_issue INTEGER DEFAULT 0, created_at TEXT)""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS pending_fuel (id SERIAL PRIMARY KEY, driver_id INTEGER, car_id INTEGER, fuel_date TEXT, fuel_time TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT, notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT)""")
+        else:
+            cursor.execute("""CREATE TABLE IF NOT EXISTS cars (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
+            cursor.execute("PRAGMA table_info(cars)"); cars_cols = {r[1] for r in cursor.fetchall()}
+            if 'expected_consumption' not in cars_cols: cursor.execute("ALTER TABLE cars ADD COLUMN expected_consumption REAL DEFAULT 0")
+            if 'fuel_type' not in cars_cols: cursor.execute("ALTER TABLE cars ADD COLUMN fuel_type TEXT DEFAULT ''")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS drivers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS requesting_parties (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, notes TEXT, active INTEGER DEFAULT 1)""")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS trips (id INTEGER PRIMARY KEY AUTOINCREMENT, trip_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, requesting_party_id INTEGER, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT)""")
+            cursor.execute("PRAGMA table_info(trips)"); trips_cols = {r[1] for r in cursor.fetchall()}
+            if 'requesting_party_id' not in trips_cols: cursor.execute("ALTER TABLE trips ADD COLUMN requesting_party_id INTEGER")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS fuel (id INTEGER PRIMARY KEY AUTOINCREMENT, fuel_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER, fuel_type TEXT, source TEXT, payment_status TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, notes TEXT)""")
+            cursor.execute("PRAGMA table_info(fuel)"); fuel_cols = {r[1] for r in cursor.fetchall()}
+            if 'car_image' not in fuel_cols: cursor.execute("ALTER TABLE fuel ADD COLUMN car_image TEXT")
+            if 'station_image' not in fuel_cols: cursor.execute("ALTER TABLE fuel ADD COLUMN station_image TEXT")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS maintenance (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, car_id INTEGER NOT NULL, type TEXT, category TEXT, km_at_service REAL, cost REAL, invoice_number TEXT, invoice_image TEXT, workshop TEXT, notes TEXT, next_service_km REAL, next_service_date TEXT)""")
+            cursor.execute("PRAGMA table_info(maintenance)"); maint_cols = {r[1] for r in cursor.fetchall()}
+            if 'currency' not in maint_cols: cursor.execute("ALTER TABLE maintenance ADD COLUMN currency TEXT DEFAULT 'ل.س'")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS travel_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, driver_id INTEGER NOT NULL, description TEXT, distance_km REAL DEFAULT 0, is_travel INTEGER DEFAULT 0, departure_time TEXT, return_time TEXT, notes TEXT)""")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS overtime (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, driver_id INTEGER NOT NULL, morning_hours REAL DEFAULT 0, evening_hours REAL DEFAULT 0, notes TEXT)""")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS daily_checks (id INTEGER PRIMARY KEY AUTOINCREMENT, check_date TEXT NOT NULL, check_time TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, km_at_check REAL, oil_checked INTEGER DEFAULT 0, radiator_checked INTEGER DEFAULT 0, tires_checked INTEGER DEFAULT 0, battery_checked INTEGER DEFAULT 0, belts_checked INTEGER DEFAULT 0, oil_notes TEXT, radiator_notes TEXT, tires_notes TEXT, battery_notes TEXT, belts_notes TEXT, oil_image TEXT, radiator_image TEXT, tires_image TEXT, battery_image TEXT, belts_image TEXT, general_notes TEXT, admin_notes TEXT, has_issue INTEGER DEFAULT 0, created_at TEXT)""")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS pending_fuel (id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER, car_id INTEGER, fuel_date TEXT, fuel_time TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT, notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT)""")
+        conn.commit(); conn.close(); return True
+    except Exception as e: print(f"⚠ خطأ في ensure_all: {e}"); return False
 
 def migrate_requesting_parties():
     try:
@@ -207,7 +322,7 @@ def migrate_requesting_parties():
 ensure_all_tables()
 migrate_requesting_parties()
 
-# ============== دوال الذكاء الاصطناعي والتلغرام ==============
+# ============== دوال الذكاء الاصطناعي وتلغرام ==============
 def send_telegram_message(chat_id, text):
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == 'ضع_توكن_البوت_هنا': 
         print("⚠ لم يتم إرسال رسالة تلغرام: التوكن غير مضبوط"); return
@@ -247,8 +362,7 @@ def inject_permissions():
             pending_fuel_count = cursor.fetchone()['cnt']; conn.close()
         except: pass
     return {'is_admin': is_admin(), 'is_viewer': is_viewer(), 'pending_fuel_count': pending_fuel_count}
-
-# ============== المسارات الأساسية ==============
+    # ============== المسارات الأساسية ==============
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -263,6 +377,34 @@ def login():
 
 @app.route('/logout')
 def logout(): session.clear(); flash('تم تسجيل الخروج', 'success'); return redirect(url_for('login'))
+
+@app.route('/settings/passwords', methods=['GET', 'POST'])
+@login_required
+def settings_passwords():
+    if request.method == 'POST':
+        current_password = request.form.get('current_password', ''); new_admin = request.form.get('new_admin_password', '').strip(); new_viewer = request.form.get('new_viewer_password', '').strip()
+        passwords = load_passwords()
+        if is_admin():
+            if current_password != passwords.get('admin_password'): flash('كلمة السر الحالية غير صحيحة', 'error'); return redirect(url_for('settings_passwords'))
+            if new_admin: passwords['admin_password'] = new_admin
+            if new_viewer: passwords['viewer_password'] = new_viewer
+            save_passwords(passwords); return redirect(url_for('restart_app'))
+        else:
+            if current_password != passwords.get('viewer_password'): flash('كلمة السر الحالية غير صحيحة', 'error'); return redirect(url_for('settings_passwords'))
+            if new_viewer: passwords['viewer_password'] = new_viewer
+            save_passwords(passwords); return redirect(url_for('restart_app'))
+    return render_template('settings_passwords.html')
+
+@app.route('/restart')
+@login_required
+def restart_app(): return render_template('restart.html')
+
+@app.route('/restart/do')
+@login_required
+def do_restart():
+    try: subprocess.Popen([sys.executable] + sys.argv, close_fds=True)
+    except: pass
+    return jsonify({'status': 'ok'})
 
 @app.route('/')
 @login_required
@@ -433,8 +575,7 @@ def daily_check_delete(check_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM daily_checks WHERE id=?", (check_id,)); conn.commit(); conn.close()
     return redirect(url_for('daily_checks_list'))
-
-@app.route('/travel_missions')
+    @app.route('/travel_missions')
 @login_required
 def travel_missions():
     conn = get_connection(); cursor = conn.cursor()
@@ -541,8 +682,7 @@ def uploaded_file(filename):
         if os.path.exists(local_path): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-# ============== التقارير ==============
+    # ============== التقارير ==============
 @app.route('/reports')
 @login_required
 def reports():
@@ -687,8 +827,7 @@ def export_fuel_excel():
     for f in fuel_records: ws.append([f['fuel_date'], f['car_name'], f['driver_name'], f['liters'] or 0, get_effective_cost(f)])
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='fuel_report.xlsx')
-
-# ============== Driver App API ==============
+    # ============== Driver App API ==============
 @app.route('/driver')
 def driver_app(): return render_template('driver_app.html')
 
@@ -699,17 +838,24 @@ def api_driver_init():
         execute_query(cursor, "SELECT id, name, phone FROM drivers WHERE active=1 ORDER BY name"); drivers_list = [dict(row) for row in cursor.fetchall()]
         execute_query(cursor, "SELECT id, name, plate_number FROM cars WHERE active=1 ORDER BY name"); cars_list = [dict(row) for row in cursor.fetchall()]
         execute_query(cursor, "SELECT id, name FROM requesting_parties WHERE active=1 ORDER BY name"); parties_list = [dict(row) for row in cursor.fetchall()]
-        busy_driver_ids = list(get_busy_driver_ids()); busy_car_ids = list(get_busy_car_ids()); conn.close()
+        busy_driver_ids = list(get_busy_driver_ids(conn)); busy_car_ids = list(get_busy_car_ids(conn)); conn.close()
         alerts = get_maintenance_alerts(); critical_alerts = [a for a in alerts if a['status'] == 'red']
         return jsonify({'success': True, 'drivers': drivers_list, 'cars': cars_list, 'parties': parties_list, 'busy_driver_ids': busy_driver_ids, 'busy_car_ids': busy_car_ids, 'alerts': critical_alerts})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/driver/alerts', methods=['GET'])
+def api_driver_alerts():
+    try:
+        alerts = get_maintenance_alerts(); critical_alerts = [a for a in alerts if a['status'] == 'red']
+        return jsonify({'success': True, 'alerts': critical_alerts})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/driver/last_check/<int:car_id>', methods=['GET'])
 def api_driver_last_check(car_id):
     try:
-        last_check = get_last_daily_check(car_id)
+        conn = get_connection(); last_check = get_last_daily_check(car_id, conn); conn.close()
         if last_check:
-            return jsonify({'success': True, 'needs_check': False, 'last_check': {'id': last_check['id'], 'check_date': last_check['check_date'], 'check_time': last_check['check_time'], 'driver_name': last_check['driver_name']}})
+            return jsonify({'success': True, 'needs_check': False, 'last_check': {'id': last_check['id'], 'check_date': last_check['check_date'], 'check_time': last_check['check_time'], 'driver_name': last_check['driver_name'], 'general_notes': last_check['general_notes'] or '', 'has_issue': last_check['has_issue']}})
         return jsonify({'success': True, 'needs_check': True})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -775,7 +921,24 @@ def api_driver_active_trip(driver_id):
         return jsonify({'success': True, 'has_active': False})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
-# ============== Telegram Webhook & Pending Fuel ==============
+@app.route('/api/driver/recent_trips/<int:driver_id>', methods=['GET'])
+def api_driver_recent_trips(driver_id):
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        execute_query(cursor, "SELECT t.id, t.trip_date, t.destination, t.start_km, t.end_km, t.distance, t.start_time, t.end_time, c.name as car_name FROM trips t JOIN cars c ON t.car_id = c.id WHERE t.driver_id = ? ORDER BY t.id DESC LIMIT 5", (driver_id,))
+        trips = [dict(row) for row in cursor.fetchall()]; conn.close()
+        return jsonify({'success': True, 'trips': trips})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/driver/pending_count/<int:driver_id>', methods=['GET'])
+def api_driver_pending_count(driver_id):
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE driver_id = ? AND trip_source = 'driver_app' AND end_km IS NULL", (driver_id,))
+        count = cursor.fetchone()['cnt']; conn.close()
+        return jsonify({'success': True, 'count': count})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
+        # ============== Telegram Webhook & Pending Fuel ==============
 telegram_pending_photos = {}
 
 @app.route('/telegram_webhook', methods=['POST'])
