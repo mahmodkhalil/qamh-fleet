@@ -1026,17 +1026,19 @@ def reports_fuel():
 @app.route('/reports/export')
 @login_required
 def export_excel():
-    month = int(request.args.get('month', datetime.now().month)); year = int(request.args.get('year', datetime.now().year))
+    month = int(request.args.get('month', datetime.now().month))
+    year = int(request.args.get('year', datetime.now().year))
     month_str = f"{year:04d}-{month:02d}"
     conn = get_connection(); cursor = conn.cursor()
+    
     execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE t.trip_date LIKE ?", (month_str + '%',)); trips = cursor.fetchall()
-    execute_query(cursor, "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
+    execute_query(cursor, "SELECT f.*, c.name as car_name FROM fuel f JOIN cars c ON f.car_id = c.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
     execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?", (month_str + '%',)); maints = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
     conn.close()
 
-    wb = Workbook(); ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
+    wb = Workbook()
+    ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
     ws_sum.append(['التقرير الشهري الشامل', month_str]); ws_sum.append([]); ws_sum.append(['الإحصائية', 'القيمة'])
     ws_sum.append(['إجمالي الرحلات', len(trips)]); ws_sum.append(['إجمالي الكيلومترات', sum(t['distance'] or 0 for t in trips)])
     ws_sum.append(['إجمالي اللترات', sum(f['liters'] or 0 for f in fuels)]); ws_sum.append(['إجمالي كلفة الوقود', sum(get_effective_cost(f) for f in fuels)])
@@ -1044,7 +1046,9 @@ def export_excel():
     ws_sum.append(['إجمالي كلفة الصيانة (دولار)', sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار')])
 
     for c in cars_list:
-        c_trips = [t for t in trips if t['car_id'] == c['id']]; c_fuel = [f for f in fuels if f['car_id'] == c['id']]; c_maint = [m for m in maints if m['car_id'] == c['id']]
+        c_trips = [t for t in trips if t['car_id'] == c['id']]
+        c_fuel = [f for f in fuels if f['car_id'] == c['id']]
+        c_maint = [m for m in maints if m['car_id'] == c['id']]
         if not c_trips and not c_fuel and not c_maint: continue
         ws_c = wb.create_sheet(title=f"سيارة - {c['name'][:20]}"); ws_c.sheet_view.rightToLeft = True
         ws_c.append([f"تقرير السيارة: {c['name']}"]); ws_c.append([])
@@ -1055,32 +1059,13 @@ def export_excel():
         ws_c.append([]); ws_c.append(['الصيانة:', 'التاريخ', 'النوع', 'التكلفة', 'العملة'])
         for m in c_maint: ws_c.append(['', m['date'], m['type'], m['cost'] or 0, m.get('currency', 'ل.س')])
 
+    ws3 = wb.create_sheet(f"تفاصيل الرحلات"); ws3.sheet_view.rightToLeft = True
+    ws3.append(['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)', 'ملاحظات'])
+    for t in trips:
+        ws3.append([t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '', t['distance'] or 0, t['notes'] or ''])
+
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_report_{month_str}.xlsx')
-
-@app.route('/reports/trips/export')
-@login_required
-def export_trips_excel():
-    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''
-    date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
-    conn = get_connection(); cursor = conn.cursor()
-    query = "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE 1=1"
-    params = []
-    if car_id: query += " AND t.car_id = ?"; params.append(car_id)
-    if driver_id: query += " AND t.driver_id = ?"; params.append(driver_id)
-    if date_from: query += " AND t.trip_date >= ?"; params.append(date_from)
-    if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
-    query += " ORDER BY t.trip_date DESC, t.id DESC"
-    execute_query(cursor, query, params); trips = cursor.fetchall(); conn.close()
-    wb = Workbook(); ws = wb.active; ws.title = "Trips Report"; ws.sheet_view.rightToLeft = True
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
-    headers = ['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)', 'ملاحظات']
-    ws.append(headers)
-    for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
-    for t in trips:
-        ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '', t['distance'] or '', t['notes'] or ''])
-    output = io.BytesIO(); wb.save(output); output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='trips_report.xlsx')
 
 @app.route('/reports/fuel/export')
 @login_required
