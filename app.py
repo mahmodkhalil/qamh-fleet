@@ -12,6 +12,7 @@ import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 import requests
+import google.generativeai as genai
 
 # ============== اتصال قاعدة البيانات ==============
 try:
@@ -40,15 +41,19 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# ============== إعدادات البوت والذكاء الاصطناعي ==============
+TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ضع_توكن_البوت_هنا')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'ضع_مفتاح_جيميني_هنا')
+
+if GEMINI_API_KEY and GEMINI_API_KEY != 'ضع_مفتاح_جيميني_هنا':
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # ============== Supabase Storage ==============
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_SECRET_KEY = os.environ.get('SUPABASE_SECRET_KEY', '')
 SUPABASE_BUCKET = 'qamh-images'
 
-
 def upload_image_to_supabase(filename, img_data):
-    """رفع صورة إلى Supabase Storage"""
     if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
         print("⚠ Supabase keys غير مضبوطة - استخدام التخزين المحلي")
         return None
@@ -70,9 +75,7 @@ def upload_image_to_supabase(filename, img_data):
         print(f"⚠ خطأ في رفع الصورة: {e}")
         return None
 
-
 def delete_image_from_supabase(filename):
-    """حذف صورة من Supabase Storage"""
     if not filename or not SUPABASE_URL or not SUPABASE_SECRET_KEY:
         return False
     try:
@@ -84,7 +87,7 @@ def delete_image_from_supabase(filename):
         print(f"⚠ خطأ في حذف الصورة: {e}")
         return False
 
-
+# ============== دوال مساعدة ==============
 def load_passwords():
     if not os.path.exists(PASSWORDS_FILE):
         default = {'admin_password': 'admin2026', 'viewer_password': 'qamh2026'}
@@ -97,23 +100,18 @@ def load_passwords():
     except Exception:
         return {'admin_password': 'admin2026', 'viewer_password': 'qamh2026'}
 
-
 def save_passwords(data):
     with open(PASSWORDS_FILE, 'w', encoding='utf-8') as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-
 def get_admin_password():
     return load_passwords().get('admin_password', 'admin2026')
-
 
 def get_viewer_password():
     return load_passwords().get('viewer_password', 'qamh2026')
 
-
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 
 def get_connection():
     if DATABASE_URL:
@@ -124,10 +122,8 @@ def get_connection():
         conn.row_factory = sqlite3.Row
         return conn
 
-
 def is_postgres():
     return DATABASE_URL is not None
-
 
 def execute_query(cursor, query, params=()):
     if is_postgres():
@@ -135,14 +131,11 @@ def execute_query(cursor, query, params=()):
     cursor.execute(query, params)
     return cursor
 
-
 def is_admin():
     return session.get('role') == 'admin'
 
-
 def is_viewer():
     return session.get('role') in ('admin', 'viewer')
-
 
 def login_required(f):
     @wraps(f)
@@ -151,7 +144,6 @@ def login_required(f):
             return redirect(url_for('login'))
         return f(*args, **kwargs)
     return decorated_function
-
 
 def admin_required(f):
     @wraps(f)
@@ -162,7 +154,7 @@ def admin_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-
+# ============== دوال حسابية ==============
 def get_car_current_km(car_id):
     conn = get_connection()
     cursor = conn.cursor()
@@ -172,10 +164,12 @@ def get_car_current_km(car_id):
     execute_query(cursor, "SELECT MAX(km_at_service) as max_km FROM maintenance WHERE car_id=? AND km_at_service IS NOT NULL", (car_id,))
     row = cursor.fetchone()
     maint_km = row['max_km'] if row else None
+    execute_query(cursor, "SELECT MAX(km_at_fill) as max_km FROM fuel WHERE car_id=? AND km_at_fill IS NOT NULL", (car_id,))
+    row = cursor.fetchone()
+    fuel_km = row['max_km'] if row else None
     conn.close()
-    candidates = [x for x in [trip_km, maint_km] if x is not None]
+    candidates = [x for x in [trip_km, maint_km, fuel_km] if x is not None]
     return max(candidates) if candidates else 0
-
 
 def get_maintenance_alerts():
     conn = get_connection()
@@ -214,7 +208,6 @@ def get_maintenance_alerts():
     alerts.sort(key=lambda x: x['remaining'])
     return alerts
 
-
 def should_count_cost(f):
     if f['source'] == 'خزان الشركة':
         return False
@@ -223,14 +216,12 @@ def should_count_cost(f):
         return True
     return False
 
-
 def get_effective_cost(f):
     if not should_count_cost(f):
         return 0
     if f['final_cost']:
         return f['final_cost']
     return f['total_cost'] or 0
-
 
 def get_estimated_cost(f):
     if f['final_cost']:
@@ -244,7 +235,6 @@ def get_estimated_cost(f):
             return 0
     return 0
 
-
 def get_car_cost_per_km(car_id, conn=None):
     close_conn = False
     if conn is None:
@@ -257,25 +247,20 @@ def get_car_cost_per_km(car_id, conn=None):
         ORDER BY km_at_fill ASC, fuel_date ASC
     """, (car_id,))
     fills = cursor.fetchall()
-    if close_conn:
-        conn.close()
+    if close_conn: conn.close()
     total_km = 0
     total_cost = 0
     for i in range(1, len(fills)):
         prev_km = fills[i-1]['km_at_fill']
         curr_km = fills[i]['km_at_fill']
-        if prev_km is None or curr_km is None:
-            continue
+        if prev_km is None or curr_km is None: continue
         period_km = curr_km - prev_km
-        if period_km <= 0:
-            continue
+        if period_km <= 0: continue
         period_cost = get_estimated_cost(fills[i])
         total_km += period_km
         total_cost += period_cost
-    if total_km <= 0:
-        return 0
+    if total_km <= 0: return 0
     return total_cost / total_km
-
 
 def get_car_liters_per_100km(car_id, conn=None):
     close_conn = False
@@ -289,32 +274,22 @@ def get_car_liters_per_100km(car_id, conn=None):
         ORDER BY km_at_fill ASC, fuel_date ASC
     """, (car_id,))
     fills = cursor.fetchall()
-    if close_conn:
-        conn.close()
+    if close_conn: conn.close()
     total_km = 0
     total_liters = 0
     for i in range(1, len(fills)):
         prev_km = fills[i-1]['km_at_fill']
         curr_km = fills[i]['km_at_fill']
-        if prev_km is None or curr_km is None:
-            continue
+        if prev_km is None or curr_km is None: continue
         period_km = curr_km - prev_km
-        if period_km <= 0:
-            continue
+        if period_km <= 0: continue
         period_liters = fills[i]['liters'] or 0
         total_km += period_km
         total_liters += period_liters
-    if total_km <= 0:
-        return 0
+    if total_km <= 0: return 0
     return (total_liters / total_km) * 100
 
-
 def get_last_station_price_per_liter(car_id, conn=None):
-    """
-    ترجع آخر سعر لتر من تعبئة كازية لهذه السيارة بنفس نوع الوقود.
-    إذا ما في، ترجع آخر سعر كازية في النظام كله بنفس نوع الوقود.
-    إذا ما في، ترجع None.
-    """
     close_conn = False
     if conn is None:
         conn = get_connection()
@@ -324,49 +299,34 @@ def get_last_station_price_per_liter(car_id, conn=None):
     car = cursor.fetchone()
     car_fuel_type = car['fuel_type'] if car else None
     if not car_fuel_type:
-        if close_conn:
-            conn.close()
+        if close_conn: conn.close()
         return None
     execute_query(cursor, """
         SELECT price_per_liter FROM fuel
         WHERE car_id = ? AND source = 'كازية' AND fuel_type = ?
           AND price_per_liter IS NOT NULL AND price_per_liter > 0
-        ORDER BY fuel_date DESC, id DESC
-        LIMIT 1
+        ORDER BY fuel_date DESC, id DESC LIMIT 1
     """, (car_id, car_fuel_type))
     row = cursor.fetchone()
     price = None
     if row and row['price_per_liter']:
-        try:
-            price = float(row['price_per_liter'])
-        except (ValueError, TypeError):
-            price = None
+        try: price = float(row['price_per_liter'])
+        except: price = None
     if price is None:
         execute_query(cursor, """
             SELECT price_per_liter FROM fuel
             WHERE source = 'كازية' AND fuel_type = ?
               AND price_per_liter IS NOT NULL AND price_per_liter > 0
-            ORDER BY fuel_date DESC, id DESC
-            LIMIT 1
+            ORDER BY fuel_date DESC, id DESC LIMIT 1
         """, (car_fuel_type,))
         row = cursor.fetchone()
         if row and row['price_per_liter']:
-            try:
-                price = float(row['price_per_liter'])
-            except (ValueError, TypeError):
-                price = None
-    if close_conn:
-        conn.close()
+            try: price = float(row['price_per_liter'])
+            except: price = None
+    if close_conn: conn.close()
     return price
 
-
 def get_car_estimated_cost_per_km(car_id, conn=None):
-    """
-    كلفة/كم = (expected_consumption × آخر سعر لتر) ÷ 100
-    ترجع None إذا:
-      - expected_consumption = 0 أو None
-      - لا يوجد سعر لتر متاح (لا للسيارة ولا للسوق)
-    """
     close_conn = False
     if conn is None:
         conn = get_connection()
@@ -376,34 +336,23 @@ def get_car_estimated_cost_per_km(car_id, conn=None):
     car = cursor.fetchone()
     expected = car['expected_consumption'] if car else None
     if not expected:
-        if close_conn:
-            conn.close()
+        if close_conn: conn.close()
         return None
-    try:
-        expected = float(expected)
-    except (ValueError, TypeError):
-        if close_conn:
-            conn.close()
+    try: expected = float(expected)
+    except: 
+        if close_conn: conn.close()
         return None
     if expected <= 0:
-        if close_conn:
-            conn.close()
+        if close_conn: conn.close()
         return None
     price = get_last_station_price_per_liter(car_id, conn)
     if price is None:
-        if close_conn:
-            conn.close()
+        if close_conn: conn.close()
         return None
-    if close_conn:
-        conn.close()
+    if close_conn: conn.close()
     return (expected * price) / 100
 
-
 def get_requesting_parties(active_only=True, conn=None):
-    """
-    ترجع قائمة الجهات الطالبة.
-    إذا active_only=True، ترجع النشطة فقط.
-    """
     close_conn = False
     if conn is None:
         conn = get_connection()
@@ -414,18 +363,10 @@ def get_requesting_parties(active_only=True, conn=None):
     else:
         execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY name")
     parties = cursor.fetchall()
-    if close_conn:
-        conn.close()
+    if close_conn: conn.close()
     return parties
 
-
-# 🆕 ============== دوال الفحص اليومي ==============
-
 def get_last_daily_check(car_id, conn=None):
-    """
-    ترجع آخر فحص يومي للسيارة (خلال 3 ساعات).
-    ترجع None إذا ما في فحص حديث.
-    """
     close_conn = False
     if conn is None:
         conn = get_connection()
@@ -433,154 +374,81 @@ def get_last_daily_check(car_id, conn=None):
     cursor = conn.cursor()
     execute_query(cursor, """
         SELECT dc.*, d.name as driver_name
-        FROM daily_checks dc
-        JOIN drivers d ON dc.driver_id = d.id
-        WHERE dc.car_id = ?
-        ORDER BY dc.id DESC
-        LIMIT 1
+        FROM daily_checks dc JOIN drivers d ON dc.driver_id = d.id
+        WHERE dc.car_id = ? ORDER BY dc.id DESC LIMIT 1
     """, (car_id,))
     check = cursor.fetchone()
-    if close_conn:
-        conn.close()
-    if not check:
-        return None
+    if close_conn: conn.close()
+    if not check: return None
     try:
         check_datetime = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M:%S")
-    except (ValueError, TypeError):
-        try:
-            check_datetime = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M")
-        except:
-            return None
+    except:
+        try: check_datetime = datetime.strptime(f"{check['check_date']} {check['check_time']}", "%Y-%m-%d %H:%M")
+        except: return None
     hours_since = (datetime.now() - check_datetime).total_seconds() / 3600
-    if hours_since < 3:
-        return dict(check)
+    if hours_since < 3: return dict(check)
     return None
 
-
 def needs_daily_check(car_id, conn=None):
-    """
-    ترجع True إذا السيارة تحتاج فحص يومي جديد.
-    """
-    last_check = get_last_daily_check(car_id, conn)
-    return last_check is None
-
-
-# 🆕 ============== دوال السائقين/السيارات المشغولة ==============
+    return get_last_daily_check(car_id, conn) is None
 
 def get_busy_driver_ids(conn=None):
-    """
-    ترجع مجموعة IDs السائقين اللي عندهم رحلة نشطة حالياً.
-    (رحلة نشطة = trip_source = 'driver_app' AND end_km IS NULL)
-    """
     close_conn = False
     if conn is None:
         conn = get_connection()
         close_conn = True
     cursor = conn.cursor()
-    execute_query(cursor, """
-        SELECT DISTINCT driver_id FROM trips
-        WHERE end_km IS NULL AND trip_source = 'driver_app'
-    """)
+    execute_query(cursor, "SELECT DISTINCT driver_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'")
     rows = cursor.fetchall()
-    if close_conn:
-        conn.close()
+    if close_conn: conn.close()
     return {row['driver_id'] for row in rows}
 
-
 def get_busy_car_ids(conn=None):
-    """
-    ترجع مجموعة IDs السيارات اللي فيها رحلة نشطة حالياً.
-    """
     close_conn = False
     if conn is None:
         conn = get_connection()
         close_conn = True
     cursor = conn.cursor()
-    execute_query(cursor, """
-        SELECT DISTINCT car_id FROM trips
-        WHERE end_km IS NULL AND trip_source = 'driver_app'
-    """)
+    execute_query(cursor, "SELECT DISTINCT car_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'")
     rows = cursor.fetchall()
-    if close_conn:
-        conn.close()
+    if close_conn: conn.close()
     return {row['car_id'] for row in rows}
 
-
+# ============== دوال إنشاء الجداول والترحيل ==============
 def ensure_daily_checks_table():
-    """
-    إنشاء جدول الفحص اليومي إذا ما موجود.
-    """
     try:
         conn = get_connection()
         cursor = conn.cursor()
         if is_postgres():
             execute_query(cursor, """
                 CREATE TABLE IF NOT EXISTS daily_checks (
-                    id SERIAL PRIMARY KEY,
-                    check_date TEXT NOT NULL,
-                    check_time TEXT NOT NULL,
-                    car_id INTEGER NOT NULL,
-                    driver_id INTEGER NOT NULL,
-                    km_at_check REAL,
-                    oil_checked INTEGER DEFAULT 0,
-                    radiator_checked INTEGER DEFAULT 0,
-                    tires_checked INTEGER DEFAULT 0,
-                    battery_checked INTEGER DEFAULT 0,
-                    belts_checked INTEGER DEFAULT 0,
-                    oil_notes TEXT,
-                    radiator_notes TEXT,
-                    tires_notes TEXT,
-                    battery_notes TEXT,
-                    belts_notes TEXT,
-                    oil_image TEXT,
-                    radiator_image TEXT,
-                    tires_image TEXT,
-                    battery_image TEXT,
-                    belts_image TEXT,
-                    general_notes TEXT,
-                    admin_notes TEXT,
-                    has_issue INTEGER DEFAULT 0,
-                    created_at TEXT
+                    id SERIAL PRIMARY KEY, check_date TEXT NOT NULL, check_time TEXT NOT NULL,
+                    car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, km_at_check REAL,
+                    oil_checked INTEGER DEFAULT 0, radiator_checked INTEGER DEFAULT 0,
+                    tires_checked INTEGER DEFAULT 0, battery_checked INTEGER DEFAULT 0, belts_checked INTEGER DEFAULT 0,
+                    oil_notes TEXT, radiator_notes TEXT, tires_notes TEXT, battery_notes TEXT, belts_notes TEXT,
+                    oil_image TEXT, radiator_image TEXT, tires_image TEXT, battery_image TEXT, belts_image TEXT,
+                    general_notes TEXT, admin_notes TEXT, has_issue INTEGER DEFAULT 0, created_at TEXT
                 )
             """)
         else:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS daily_checks (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    check_date TEXT NOT NULL,
-                    check_time TEXT NOT NULL,
-                    car_id INTEGER NOT NULL,
-                    driver_id INTEGER NOT NULL,
-                    km_at_check REAL,
-                    oil_checked INTEGER DEFAULT 0,
-                    radiator_checked INTEGER DEFAULT 0,
-                    tires_checked INTEGER DEFAULT 0,
-                    battery_checked INTEGER DEFAULT 0,
-                    belts_checked INTEGER DEFAULT 0,
-                    oil_notes TEXT,
-                    radiator_notes TEXT,
-                    tires_notes TEXT,
-                    battery_notes TEXT,
-                    belts_notes TEXT,
-                    oil_image TEXT,
-                    radiator_image TEXT,
-                    tires_image TEXT,
-                    battery_image TEXT,
-                    belts_image TEXT,
-                    general_notes TEXT,
-                    admin_notes TEXT,
-                    has_issue INTEGER DEFAULT 0,
-                    created_at TEXT
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, check_date TEXT NOT NULL, check_time TEXT NOT NULL,
+                    car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, km_at_check REAL,
+                    oil_checked INTEGER DEFAULT 0, radiator_checked INTEGER DEFAULT 0,
+                    tires_checked INTEGER DEFAULT 0, battery_checked INTEGER DEFAULT 0, belts_checked INTEGER DEFAULT 0,
+                    oil_notes TEXT, radiator_notes TEXT, tires_notes TEXT, battery_notes TEXT, belts_notes TEXT,
+                    oil_image TEXT, radiator_image TEXT, tires_image TEXT, battery_image TEXT, belts_image TEXT,
+                    general_notes TEXT, admin_notes TEXT, has_issue INTEGER DEFAULT 0, created_at TEXT
                 )
             """)
         conn.commit()
         conn.close()
-        print("✓ جدول daily_checks جاهز")
         return True
     except Exception as e:
         print(f"⚠ خطأ في ensure_daily_checks_table: {e}")
         return False
-
 
 def ensure_trips_columns():
     try:
@@ -588,39 +456,25 @@ def ensure_trips_columns():
         cursor = conn.cursor()
         if is_postgres():
             columns_to_add = [
-                ('start_image', 'TEXT'),
-                ('end_image', 'TEXT'),
-                ('start_time', 'TEXT'),
-                ('end_time', 'TEXT'),
-                ('trip_source', "TEXT DEFAULT 'manual'"),
-                ('driver_confirmed', 'INTEGER DEFAULT 0'),
-                ('admin_seen', 'INTEGER DEFAULT 0'),
-                ('admin_seen_at', 'TEXT'),
-                ('requesting_party_id', 'INTEGER'),
+                ('start_image', 'TEXT'), ('end_image', 'TEXT'), ('start_time', 'TEXT'), ('end_time', 'TEXT'),
+                ('trip_source', "TEXT DEFAULT 'manual'"), ('driver_confirmed', 'INTEGER DEFAULT 0'),
+                ('admin_seen', 'INTEGER DEFAULT 0'), ('admin_seen_at', 'TEXT'), ('requesting_party_id', 'INTEGER')
             ]
             for col_name, col_type in columns_to_add:
-                try:
-                    execute_query(cursor, f"ALTER TABLE trips ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
-                except Exception as e:
-                    print(f"⚠ خطأ في إضافة {col_name}: {e}")
+                try: execute_query(cursor, f"ALTER TABLE trips ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
+                except: pass
         else:
             cursor.execute("PRAGMA table_info(trips)")
             existing = {row[1] for row in cursor.fetchall()}
             new_columns = [
-                ("start_image", "TEXT"), ("end_image", "TEXT"),
-                ("start_time", "TEXT"), ("end_time", "TEXT"),
-                ("trip_source", "TEXT DEFAULT 'manual'"),
-                ("driver_confirmed", "INTEGER DEFAULT 0"),
-                ("admin_seen", "INTEGER DEFAULT 0"),
-                ("admin_seen_at", "TEXT"),
-                ("requesting_party_id", "INTEGER"),
+                ("start_image", "TEXT"), ("end_image", "TEXT"), ("start_time", "TEXT"), ("end_time", "TEXT"),
+                ("trip_source", "TEXT DEFAULT 'manual'"), ("driver_confirmed", "INTEGER DEFAULT 0"),
+                ("admin_seen", "INTEGER DEFAULT 0"), ("admin_seen_at", "TEXT"), ("requesting_party_id", "INTEGER")
             ]
             for col_name, col_type in new_columns:
                 if col_name not in existing:
-                    try:
-                        cursor.execute(f"ALTER TABLE trips ADD COLUMN {col_name} {col_type}")
-                    except Exception as e:
-                        print(f"⚠ خطأ في إضافة {col_name}: {e}")
+                    try: cursor.execute(f"ALTER TABLE trips ADD COLUMN {col_name} {col_type}")
+                    except: pass
         conn.commit()
         conn.close()
         return True
@@ -628,49 +482,90 @@ def ensure_trips_columns():
         print(f"⚠ خطأ في ensure_trips_columns: {e}")
         return False
 
-
-def migrate_requesting_parties():
-    """
-    Migration تلقائي: استخراج قيم requester الفريدة من الرحلات القديمة
-    وإنشاؤها كجهات طالبة، ثم ربط الرحلات القديمة بها.
-    """
+def ensure_maintenance_currency():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        execute_query(cursor, """
-            SELECT DISTINCT requester FROM trips 
-            WHERE requester IS NOT NULL AND requester != '' 
-              AND requesting_party_id IS NULL
-        """)
+        if is_postgres():
+            execute_query(cursor, "ALTER TABLE maintenance ADD COLUMN IF NOT EXISTS currency TEXT DEFAULT 'ل.س'")
+        else:
+            cursor.execute("PRAGMA table_info(maintenance)")
+            existing = {row[1] for row in cursor.fetchall()}
+            if 'currency' not in existing:
+                cursor.execute("ALTER TABLE maintenance ADD COLUMN currency TEXT DEFAULT 'ل.س'")
+        conn.commit()
+        conn.close()
+        print("✓ عمود currency في جدول maintenance جاهز")
+        return True
+    except Exception as e:
+        print(f"⚠ خطأ في ensure_maintenance_currency: {e}")
+        return False
+
+def migrate_requesting_parties():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        execute_query(cursor, "SELECT DISTINCT requester FROM trips WHERE requester IS NOT NULL AND requester != '' AND requesting_party_id IS NULL")
         unique_requesters = cursor.fetchall()
         for row in unique_requesters:
             name = row['requester'].strip() if row['requester'] else ''
-            if not name:
-                continue
+            if not name: continue
             execute_query(cursor, "SELECT id FROM requesting_parties WHERE name=?", (name,))
             existing = cursor.fetchone()
-            if existing:
-                party_id = existing['id']
+            if existing: party_id = existing['id']
             else:
-                execute_query(cursor, "INSERT INTO requesting_parties (name, notes, active) VALUES (?, ?, 1)",
-                             (name, 'مستورد تلقائياً من الرحلات القديمة'))
-                if is_postgres():
-                    execute_query(cursor, "SELECT MAX(id) as id FROM requesting_parties")
-                else:
-                    execute_query(cursor, "SELECT last_insert_rowid() as id")
+                execute_query(cursor, "INSERT INTO requesting_parties (name, notes, active) VALUES (?, ?, 1)", (name, 'مستورد تلقائياً من الرحلات القديمة'))
+                if is_postgres(): execute_query(cursor, "SELECT MAX(id) as id FROM requesting_parties")
+                else: execute_query(cursor, "SELECT last_insert_rowid() as id")
                 new_row = cursor.fetchone()
                 party_id = new_row['id'] if new_row else None
             if party_id:
-                execute_query(cursor, "UPDATE trips SET requesting_party_id=? WHERE requester=? AND requesting_party_id IS NULL",
-                             (party_id, row['requester']))
+                execute_query(cursor, "UPDATE trips SET requesting_party_id=? WHERE requester=? AND requesting_party_id IS NULL", (party_id, row['requester']))
         conn.commit()
         conn.close()
-        print("✓ تم تحديث الجهات الطالبة من الرحلات القديمة")
         return True
     except Exception as e:
         print(f"⚠ خطأ في migrate_requesting_parties: {e}")
         return False
 
+def ensure_pending_fuel_table():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        if is_postgres():
+            execute_query(cursor, """
+                CREATE TABLE IF NOT EXISTS pending_fuel (
+                    id SERIAL PRIMARY KEY, driver_id INTEGER NOT NULL, car_id INTEGER NOT NULL,
+                    fuel_date TEXT NOT NULL, fuel_time TEXT, liters REAL, price_per_liter REAL,
+                    total_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT,
+                    notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT
+                )
+            """)
+            cols = [('station_image', 'TEXT'), ('car_image', 'TEXT'), ('fuel_time', 'TEXT')]
+            for col, typ in cols:
+                try: execute_query(cursor, f"ALTER TABLE pending_fuel ADD COLUMN IF NOT EXISTS {col} {typ}")
+                except: pass
+        else:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS pending_fuel (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER NOT NULL, car_id INTEGER NOT NULL,
+                    fuel_date TEXT NOT NULL, fuel_time TEXT, liters REAL, price_per_liter REAL,
+                    total_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT,
+                    notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT
+                )
+            """)
+            cursor.execute("PRAGMA table_info(pending_fuel)")
+            existing = {row[1] for row in cursor.fetchall()}
+            for col, typ in [('station_image', 'TEXT'), ('car_image', 'TEXT'), ('fuel_time', 'TEXT')]:
+                if col not in existing:
+                    try: cursor.execute(f"ALTER TABLE pending_fuel ADD COLUMN {col} {typ}")
+                    except: pass
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        print(f"⚠ خطأ في ensure_pending_fuel_table: {e}")
+        return False
 
 def ensure_all_tables():
     try:
@@ -684,48 +579,90 @@ def ensure_all_tables():
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS requesting_parties (id SERIAL PRIMARY KEY, name TEXT NOT NULL, notes TEXT, active INTEGER DEFAULT 1)""")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS trips (id SERIAL PRIMARY KEY, trip_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, requesting_party_id INTEGER, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT, start_image TEXT, end_image TEXT, start_time TEXT, end_time TEXT, trip_source TEXT DEFAULT 'manual', driver_confirmed INTEGER DEFAULT 0, admin_seen INTEGER DEFAULT 0, admin_seen_at TEXT)""")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS fuel (id SERIAL PRIMARY KEY, fuel_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER, fuel_type TEXT, source TEXT, payment_status TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, notes TEXT)""")
-            execute_query(cursor, """CREATE TABLE IF NOT EXISTS maintenance (id SERIAL PRIMARY KEY, date TEXT NOT NULL, car_id INTEGER NOT NULL, type TEXT, category TEXT, km_at_service REAL, cost REAL, invoice_number TEXT, invoice_image TEXT, workshop TEXT, notes TEXT, next_service_km REAL, next_service_date TEXT)""")
+            execute_query(cursor, """CREATE TABLE IF NOT EXISTS maintenance (id SERIAL PRIMARY KEY, date TEXT NOT NULL, car_id INTEGER NOT NULL, type TEXT, category TEXT, km_at_service REAL, cost REAL, invoice_number TEXT, invoice_image TEXT, workshop TEXT, notes TEXT, next_service_km REAL, next_service_date TEXT, currency TEXT DEFAULT 'ل.س')""")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS travel_missions (id SERIAL PRIMARY KEY, date TEXT NOT NULL, driver_id INTEGER NOT NULL, description TEXT, distance_km REAL DEFAULT 0, is_travel INTEGER DEFAULT 0, departure_time TEXT, return_time TEXT, notes TEXT)""")
             execute_query(cursor, """CREATE TABLE IF NOT EXISTS overtime (id SERIAL PRIMARY KEY, date TEXT NOT NULL, driver_id INTEGER NOT NULL, morning_hours REAL DEFAULT 0, evening_hours REAL DEFAULT 0, notes TEXT)""")
         else:
             cursor.execute("""CREATE TABLE IF NOT EXISTS cars (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, plate_number TEXT, car_type TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
             cursor.execute("PRAGMA table_info(cars)")
             cars_cols = {row[1] for row in cursor.fetchall()}
-            if 'expected_consumption' not in cars_cols:
-                cursor.execute("ALTER TABLE cars ADD COLUMN expected_consumption REAL DEFAULT 0")
-            if 'fuel_type' not in cars_cols:
-                cursor.execute("ALTER TABLE cars ADD COLUMN fuel_type TEXT DEFAULT ''")
+            if 'expected_consumption' not in cars_cols: cursor.execute("ALTER TABLE cars ADD COLUMN expected_consumption REAL DEFAULT 0")
+            if 'fuel_type' not in cars_cols: cursor.execute("ALTER TABLE cars ADD COLUMN fuel_type TEXT DEFAULT ''")
             cursor.execute("""CREATE TABLE IF NOT EXISTS drivers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, phone TEXT, notes TEXT, active INTEGER DEFAULT 1)""")
             cursor.execute("""CREATE TABLE IF NOT EXISTS requesting_parties (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, notes TEXT, active INTEGER DEFAULT 1)""")
             cursor.execute("""CREATE TABLE IF NOT EXISTS trips (id INTEGER PRIMARY KEY AUTOINCREMENT, trip_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER NOT NULL, destination TEXT, start_location TEXT, trip_type TEXT, requester TEXT, requesting_party_id INTEGER, exit_time TEXT, return_time TEXT, start_km REAL, end_km REAL, distance REAL, notes TEXT)""")
             cursor.execute("PRAGMA table_info(trips)")
             trips_cols = {row[1] for row in cursor.fetchall()}
-            if 'requesting_party_id' not in trips_cols:
-                cursor.execute("ALTER TABLE trips ADD COLUMN requesting_party_id INTEGER")
+            if 'requesting_party_id' not in trips_cols: cursor.execute("ALTER TABLE trips ADD COLUMN requesting_party_id INTEGER")
             cursor.execute("""CREATE TABLE IF NOT EXISTS fuel (id INTEGER PRIMARY KEY AUTOINCREMENT, fuel_date TEXT NOT NULL, car_id INTEGER NOT NULL, driver_id INTEGER, fuel_type TEXT, source TEXT, payment_status TEXT, liters REAL, price_per_liter REAL, total_cost REAL, final_cost REAL, km_at_fill REAL, notes TEXT)""")
             cursor.execute("""CREATE TABLE IF NOT EXISTS maintenance (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, car_id INTEGER NOT NULL, type TEXT, category TEXT, km_at_service REAL, cost REAL, invoice_number TEXT, invoice_image TEXT, workshop TEXT, notes TEXT, next_service_km REAL, next_service_date TEXT)""")
+            cursor.execute("PRAGMA table_info(maintenance)")
+            maint_cols = {row[1] for row in cursor.fetchall()}
+            if 'currency' not in maint_cols: cursor.execute("ALTER TABLE maintenance ADD COLUMN currency TEXT DEFAULT 'ل.س'")
             cursor.execute("""CREATE TABLE IF NOT EXISTS travel_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, driver_id INTEGER NOT NULL, description TEXT, distance_km REAL DEFAULT 0, is_travel INTEGER DEFAULT 0, departure_time TEXT, return_time TEXT, notes TEXT)""")
             cursor.execute("""CREATE TABLE IF NOT EXISTS overtime (id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, driver_id INTEGER NOT NULL, morning_hours REAL DEFAULT 0, evening_hours REAL DEFAULT 0, notes TEXT)""")
         conn.commit()
         conn.close()
-        print(f"✓ تم إنشاء/التحقق من كل الجداول ({'PostgreSQL' if is_postgres() else 'SQLite'})")
         return True
     except Exception as e:
         print(f"⚠ خطأ في ensure_all_tables: {e}")
         return False
 
-
+# استدعاء الدوال لضمان سلامة قاعدة البيانات
 ensure_all_tables()
 ensure_daily_checks_table()
 ensure_trips_columns()
+ensure_maintenance_currency()
+ensure_pending_fuel_table()
 migrate_requesting_parties()
 
+# ============== دوال الذكاء الاصطناعي وتلغرام ==============
+def send_telegram_message(chat_id, text):
+    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == 'ضع_توكن_البوت_هنا':
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {'chat_id': chat_id, 'text': text}
+    try: requests.post(url, json=payload, timeout=10)
+    except Exception as e: print(f"⚠ خطأ في إرسال رسالة تلغرام: {e}")
 
+def extract_data_from_images(car_img_b64, station_img_b64):
+    if not GEMINI_API_KEY or GEMINI_API_KEY == 'ضع_مفتاح_جيميني_هنا':
+        return {'km': None, 'liters': None, 'error': 'مفتاح API غير مضبوط'}
+    try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        parts = ["أنت مساعد لقراءة عدادات السيارات وفواتير الوقود. استخرج الأرقام المطلوبة بدقة."]
+        if car_img_b64:
+            data = car_img_b64.split(',')[1] if ',' in car_img_b64 else car_img_b64
+            parts.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
+            parts.append("هذه صورة عداد السيارة. استخرج قراءة العداد.")
+        if station_img_b64:
+            data = station_img_b64.split(',')[1] if ',' in station_img_b64 else station_img_b64
+            parts.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
+            parts.append("هذه صورة عداد الكازية. استخرج عدد اللترات.")
+        parts.append("أرجع النتيجة بصيغة JSON فقط: {\"km\": 12345, \"liters\": 40.5}")
+        response = model.generate_content(parts)
+        text = response.text.replace('```json', '').replace('```', '').strip()
+        data = json.loads(text)
+        return {'km': data.get('km'), 'liters': data.get('liters'), 'error': None}
+    except Exception as e:
+        print(f"⚠ خطأ في OCR: {e}")
+        return {'km': None, 'liters': None, 'error': str(e)}
+        # ============== Context Processor ==============
 @app.context_processor
 def inject_permissions():
-    return {'is_admin': is_admin(), 'is_viewer': is_viewer()}
+    pending_fuel_count = 0
+    if is_admin():
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            execute_query(cursor, "SELECT COUNT(*) as cnt FROM pending_fuel WHERE status='pending'")
+            row = cursor.fetchone()
+            if row: pending_fuel_count = row['cnt']
+            conn.close()
+        except: pass
+    return {'is_admin': is_admin(), 'is_viewer': is_viewer(), 'pending_fuel_count': pending_fuel_count}
 
-
+# ============== المسارات الأساسية ==============
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -747,19 +684,16 @@ def login():
                 flash('كلمة السر غير صحيحة', 'error')
     return render_template('login.html')
 
-
 @app.route('/logout')
 def logout():
     session.clear()
     flash('تم تسجيل الخروج', 'success')
     return redirect(url_for('login'))
 
-
 @app.route('/lang/<lang>')
 def set_lang(lang):
     session['lang'] = lang
     return redirect(request.referrer or '/')
-
 
 @app.route('/settings/passwords', methods=['GET', 'POST'])
 @login_required
@@ -779,10 +713,8 @@ def settings_passwords():
             if new_viewer and len(new_viewer) < 6:
                 flash('كلمة سر المشاهد الجديدة يجب أن تكون 6 أحرف على الأقل', 'error')
                 return redirect(url_for('settings_passwords'))
-            if new_admin:
-                passwords['admin_password'] = new_admin
-            if new_viewer:
-                passwords['viewer_password'] = new_viewer
+            if new_admin: passwords['admin_password'] = new_admin
+            if new_viewer: passwords['viewer_password'] = new_viewer
             save_passwords(passwords)
             flash('تم حفظ كلمات السر بنجاح. جاري إعادة تشغيل التطبيق...', 'success')
             return redirect(url_for('restart_app'))
@@ -802,22 +734,17 @@ def settings_passwords():
             return redirect(url_for('restart_app'))
     return render_template('settings_passwords.html')
 
-
 @app.route('/restart')
 @login_required
 def restart_app():
     return render_template('restart.html')
 
-
 @app.route('/restart/do')
 @login_required
 def do_restart():
-    try:
-        subprocess.Popen([sys.executable] + sys.argv, close_fds=True)
-    except Exception:
-        pass
+    try: subprocess.Popen([sys.executable] + sys.argv, close_fds=True)
+    except: pass
     return jsonify({'status': 'ok'})
-
 
 @app.route('/')
 @login_required
@@ -836,31 +763,22 @@ def index():
     km_row = cursor.fetchone()
     km_month = km_row['total'] if km_row and km_row['total'] else 0
     execute_query(cursor, """
-        SELECT t.*, c.name as car_name, d.name as driver_name,
-               rp.name as party_name
-        FROM trips t 
-        JOIN cars c ON t.car_id = c.id 
-        JOIN drivers d ON t.driver_id = d.id
+        SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name
+        FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id
         LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id
-        ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, 
-                 COALESCE(t.exit_time, '00:00') DESC, t.id DESC
+        ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC
     """)
     all_recent_trips = cursor.fetchall()
-    execute_query(cursor, """
-        SELECT COUNT(*) as cnt FROM trips 
-        WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)
-    """)
+    execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)")
     pending_trips_count = cursor.fetchone()['cnt']
     cost_per_km_map = {}
     execute_query(cursor, "SELECT DISTINCT id FROM cars WHERE active=1")
-    for row in cursor.fetchall():
-        cost_per_km_map[row['id']] = get_car_estimated_cost_per_km(row['id'], conn)
+    for row in cursor.fetchall(): cost_per_km_map[row['id']] = get_car_estimated_cost_per_km(row['id'], conn)
     conn.close()
     trips_by_car = {}
     for t in all_recent_trips:
         car_name = t['car_name']
-        if car_name not in trips_by_car:
-            trips_by_car[car_name] = []
+        if car_name not in trips_by_car: trips_by_car[car_name] = []
         t_dict = dict(t)
         cpk = cost_per_km_map.get(t['car_id'])
         t_dict['cost_per_km'] = cpk
@@ -869,9 +787,7 @@ def index():
     trips_by_car = dict(sorted(trips_by_car.items()))
     stats = {'cars': cars_count, 'drivers': drivers_count, 'trips_month': trips_month, 'km_month': round(km_month, 1)}
     alerts = get_maintenance_alerts()
-    return render_template('index.html', stats=stats, trips_by_car=trips_by_car, alerts=alerts,
-                         pending_trips_count=pending_trips_count)
-
+    return render_template('index.html', stats=stats, trips_by_car=trips_by_car, alerts=alerts, pending_trips_count=pending_trips_count)
 
 @app.route('/api/admin/pending_count')
 @login_required
@@ -879,88 +795,52 @@ def api_admin_pending_count():
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        execute_query(cursor, """
-            SELECT COUNT(*) as cnt FROM trips 
-            WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)
-        """)
+        execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)")
         count = cursor.fetchone()['cnt']
         conn.close()
         return jsonify({'success': True, 'count': count})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/admin/pending')
 @login_required
 def admin_pending_trips():
-    """
-    عرض الرحلات الجديدة من تطبيق السائق
-    مع إضافة معلومات الفحص اليومي لكل رحلة (daily_check_info)
-    """
     conn = get_connection()
     cursor = conn.cursor()
     execute_query(cursor, """
-        SELECT t.*, c.name as car_name, d.name as driver_name,
-               rp.name as party_name
-        FROM trips t 
-        JOIN cars c ON t.car_id = c.id 
-        JOIN drivers d ON t.driver_id = d.id
+        SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name
+        FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id
         LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id
-        WHERE t.trip_source = 'driver_app' 
-          AND (t.admin_seen IS NULL OR t.admin_seen = 0)
+        WHERE t.trip_source = 'driver_app' AND (t.admin_seen IS NULL OR t.admin_seen = 0)
         ORDER BY t.id DESC
     """)
     pending_trips_raw = cursor.fetchall()
-
-    # 🆕 جلب آخر فحص يومي لكل سيارة مذكورة في الرحلات
     pending_trips = []
     car_last_check_cache = {}
     for trip in pending_trips_raw:
         trip_dict = dict(trip)
         car_id = trip['car_id']
-        # نستخدم cache لتجنب تكرار الاستعلام لنفس السيارة
         if car_id not in car_last_check_cache:
             execute_query(cursor, """
                 SELECT dc.*, d.name as driver_name
-                FROM daily_checks dc
-                JOIN drivers d ON dc.driver_id = d.id
-                WHERE dc.car_id = ?
-                ORDER BY dc.id DESC
-                LIMIT 1
+                FROM daily_checks dc JOIN drivers d ON dc.driver_id = d.id
+                WHERE dc.car_id = ? ORDER BY dc.id DESC LIMIT 1
             """, (car_id,))
             last_check_row = cursor.fetchone()
             if last_check_row:
-                # نتأكد إن آخر فحص خلال 24 ساعة
-                try:
-                    check_dt = datetime.strptime(
-                        f"{last_check_row['check_date']} {last_check_row['check_time']}",
-                        "%Y-%m-%d %H:%M:%S"
-                    )
-                except (ValueError, TypeError):
-                    try:
-                        check_dt = datetime.strptime(
-                            f"{last_check_row['check_date']} {last_check_row['check_time']}",
-                            "%Y-%m-%d %H:%M"
-                        )
-                    except:
-                        check_dt = None
+                try: check_dt = datetime.strptime(f"{last_check_row['check_date']} {last_check_row['check_time']}", "%Y-%m-%d %H:%M:%S")
+                except:
+                    try: check_dt = datetime.strptime(f"{last_check_row['check_date']} {last_check_row['check_time']}", "%Y-%m-%d %H:%M")
+                    except: check_dt = None
                 if check_dt:
                     hours_since = (datetime.now() - check_dt).total_seconds() / 3600
-                    if hours_since < 24:
-                        car_last_check_cache[car_id] = dict(last_check_row)
-                    else:
-                        car_last_check_cache[car_id] = None
-                else:
-                    car_last_check_cache[car_id] = None
-            else:
-                car_last_check_cache[car_id] = None
-
+                    car_last_check_cache[car_id] = dict(last_check_row) if hours_since < 24 else None
+                else: car_last_check_cache[car_id] = None
+            else: car_last_check_cache[car_id] = None
         trip_dict['daily_check_info'] = car_last_check_cache[car_id]
         pending_trips.append(trip_dict)
-
     conn.close()
     return render_template('admin_pending.html', pending_trips=pending_trips)
-
 
 @app.route('/admin/pending/mark_seen/<int:trip_id>', methods=['POST'])
 @login_required
@@ -976,7 +856,6 @@ def admin_mark_seen(trip_id):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/admin/pending/mark_all_seen', methods=['POST'])
 @login_required
 def admin_mark_all_seen():
@@ -984,16 +863,12 @@ def admin_mark_all_seen():
         conn = get_connection()
         cursor = conn.cursor()
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        execute_query(cursor, """
-            UPDATE trips SET admin_seen = 1, admin_seen_at = ? 
-            WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)
-        """, (now,))
+        execute_query(cursor, "UPDATE trips SET admin_seen = 1, admin_seen_at = ? WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)", (now,))
         conn.commit()
         conn.close()
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/add_trip', methods=['GET', 'POST'])
 @admin_required
@@ -1020,10 +895,8 @@ def add_trip():
         notes = request.form.get('notes', '')
         distance = None
         if start_km and end_km:
-            try:
-                distance = float(end_km) - float(start_km)
-            except ValueError:
-                distance = None
+            try: distance = float(end_km) - float(start_km)
+            except: distance = None
         execute_query(cursor, """
             INSERT INTO trips (trip_date, car_id, driver_id, destination, start_location, trip_type, requester, requesting_party_id, exit_time, return_time, start_km, end_km, distance, notes)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -1040,7 +913,6 @@ def add_trip():
     parties_list = cursor.fetchall()
     conn.close()
     return render_template('add_trip.html', cars=cars_list, drivers=drivers_list, parties=parties_list)
-
 
 @app.route('/trips/edit/<int:trip_id>', methods=['GET', 'POST'])
 @admin_required
@@ -1067,15 +939,10 @@ def edit_trip(trip_id):
         notes = request.form.get('notes', '')
         distance = None
         if start_km and end_km:
-            try:
-                distance = float(end_km) - float(start_km)
-            except ValueError:
-                distance = None
+            try: distance = float(end_km) - float(start_km)
+            except: distance = None
         execute_query(cursor, """
-            UPDATE trips SET trip_date=?, car_id=?, driver_id=?, destination=?, 
-            start_location=?, trip_type=?, requester=?, requesting_party_id=?,
-            exit_time=?, return_time=?, start_km=?, end_km=?, distance=?, notes=?
-            WHERE id=?
+            UPDATE trips SET trip_date=?, car_id=?, driver_id=?, destination=?, start_location=?, trip_type=?, requester=?, requesting_party_id=?, exit_time=?, return_time=?, start_km=?, end_km=?, distance=?, notes=? WHERE id=?
         """, (trip_date, car_id, driver_id, destination, start_location, trip_type, requester_name, requesting_party_id, exit_time, return_time, start_km, end_km, distance, notes, trip_id))
         conn.commit()
         conn.close()
@@ -1092,7 +959,6 @@ def edit_trip(trip_id):
     conn.close()
     return render_template('add_trip.html', cars=cars_list, drivers=drivers_list, parties=parties_list, edit_trip=trip)
 
-
 @app.route('/trips/delete/<int:trip_id>')
 @admin_required
 def delete_trip(trip_id):
@@ -1104,7 +970,6 @@ def delete_trip(trip_id):
     flash('تم حذف الرحلة', 'success')
     return redirect(url_for('index'))
 
-
 @app.route('/cars')
 @login_required
 def cars():
@@ -1115,7 +980,6 @@ def cars():
     conn.close()
     return render_template('cars.html', cars=cars_list)
 
-
 @app.route('/cars/add', methods=['POST'])
 @admin_required
 def add_car():
@@ -1125,19 +989,15 @@ def add_car():
     notes = request.form.get('notes', '')
     fuel_type = request.form.get('fuel_type', '')
     expected_consumption = request.form.get('expected_consumption') or 0
-    try:
-        expected_consumption = float(expected_consumption)
-    except (ValueError, TypeError):
-        expected_consumption = 0
+    try: expected_consumption = float(expected_consumption)
+    except: expected_consumption = 0
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, "INSERT INTO cars (name, plate_number, car_type, notes, fuel_type, expected_consumption) VALUES (?, ?, ?, ?, ?, ?)",
-                   (name, plate, car_type, notes, fuel_type, expected_consumption))
+    execute_query(cursor, "INSERT INTO cars (name, plate_number, car_type, notes, fuel_type, expected_consumption) VALUES (?, ?, ?, ?, ?, ?)", (name, plate, car_type, notes, fuel_type, expected_consumption))
     conn.commit()
     conn.close()
     flash('تم إضافة السيارة', 'success')
     return redirect(url_for('cars'))
-
 
 @app.route('/cars/edit/<int:car_id>', methods=['GET', 'POST'])
 @admin_required
@@ -1151,12 +1011,9 @@ def edit_car(car_id):
         notes = request.form.get('notes', '')
         fuel_type = request.form.get('fuel_type', '')
         expected_consumption = request.form.get('expected_consumption') or 0
-        try:
-            expected_consumption = float(expected_consumption)
-        except (ValueError, TypeError):
-            expected_consumption = 0
-        execute_query(cursor, "UPDATE cars SET name=?, plate_number=?, car_type=?, notes=?, fuel_type=?, expected_consumption=? WHERE id=?",
-                       (name, plate, car_type, notes, fuel_type, expected_consumption, car_id))
+        try: expected_consumption = float(expected_consumption)
+        except: expected_consumption = 0
+        execute_query(cursor, "UPDATE cars SET name=?, plate_number=?, car_type=?, notes=?, fuel_type=?, expected_consumption=? WHERE id=?", (name, plate, car_type, notes, fuel_type, expected_consumption, car_id))
         conn.commit()
         conn.close()
         flash('تم تعديل السيارة', 'success')
@@ -1165,7 +1022,6 @@ def edit_car(car_id):
     car = cursor.fetchone()
     conn.close()
     return render_template('cars.html', cars=[], edit_car=car)
-
 
 @app.route('/cars/delete/<int:car_id>')
 @admin_required
@@ -1178,9 +1034,6 @@ def delete_car(car_id):
     flash('تم حذف السيارة', 'success')
     return redirect(url_for('cars'))
 
-
-# ============== الجهات الطالبة ==============
-
 @app.route('/requesting_parties')
 @login_required
 def requesting_parties():
@@ -1190,7 +1043,6 @@ def requesting_parties():
     parties = cursor.fetchall()
     conn.close()
     return render_template('requesting_parties.html', parties=parties)
-
 
 @app.route('/requesting_parties/add', methods=['POST'])
 @admin_required
@@ -1212,7 +1064,6 @@ def add_requesting_party():
     conn.close()
     flash('تم إضافة الجهة الطالبة', 'success')
     return redirect(url_for('requesting_parties'))
-
 
 @app.route('/requesting_parties/edit/<int:party_id>', methods=['GET', 'POST'])
 @admin_required
@@ -1243,7 +1094,6 @@ def edit_requesting_party(party_id):
     conn.close()
     return render_template('requesting_parties.html', parties=parties, edit_party=party)
 
-
 @app.route('/requesting_parties/delete/<int:party_id>')
 @admin_required
 def delete_requesting_party(party_id):
@@ -1260,7 +1110,6 @@ def delete_requesting_party(party_id):
     conn.close()
     flash('تم حذف الجهة الطالبة', 'success')
     return redirect(url_for('requesting_parties'))
-
 
 @app.route('/requesting_parties/toggle/<int:party_id>')
 @admin_required
@@ -1280,13 +1129,9 @@ def toggle_requesting_party(party_id):
     flash('تم تحديث حالة الجهة', 'success')
     return redirect(url_for('requesting_parties'))
 
-
-# ============== الفحص اليومي (للمسؤول) ==============
-
 @app.route('/daily_checks')
 @login_required
 def daily_checks_list():
-    """صفحة عرض كل الفحوصات اليومية"""
     date_from = request.args.get('date_from') or ''
     date_to = request.args.get('date_to') or ''
     car_id = request.args.get('car_id') or ''
@@ -1297,58 +1142,26 @@ def daily_checks_list():
     cars_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM drivers ORDER BY name")
     drivers_list = cursor.fetchall()
-    query = """
-        SELECT dc.*, c.name as car_name, d.name as driver_name
-        FROM daily_checks dc
-        JOIN cars c ON dc.car_id = c.id
-        JOIN drivers d ON dc.driver_id = d.id
-        WHERE 1=1
-    """
+    query = "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE 1=1"
     params = []
-    if date_from:
-        query += " AND dc.check_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND dc.check_date <= ?"
-        params.append(date_to)
-    if car_id:
-        query += " AND dc.car_id = ?"
-        params.append(car_id)
-    if driver_id:
-        query += " AND dc.driver_id = ?"
-        params.append(driver_id)
+    if date_from: query += " AND dc.check_date >= ?"; params.append(date_from)
+    if date_to: query += " AND dc.check_date <= ?"; params.append(date_to)
+    if car_id: query += " AND dc.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND dc.driver_id = ?"; params.append(driver_id)
     query += " ORDER BY dc.id DESC"
     execute_query(cursor, query, params)
     checks = cursor.fetchall()
     total_checks = len(checks)
     checks_with_issue = len([c for c in checks if c['has_issue'] == 1])
     conn.close()
-    return render_template('daily_checks.html',
-                         checks=checks,
-                         cars=cars_list,
-                         drivers=drivers_list,
-                         total_checks=total_checks,
-                         checks_with_issue=checks_with_issue,
-                         selected_car=car_id,
-                         selected_driver=driver_id,
-                         date_from=date_from,
-                         date_to=date_to,
-                         has_filter=bool(car_id or driver_id or date_from or date_to))
-
+    return render_template('daily_checks.html', checks=checks, cars=cars_list, drivers=drivers_list, total_checks=total_checks, checks_with_issue=checks_with_issue, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or date_from or date_to))
 
 @app.route('/daily_checks/view/<int:check_id>')
 @login_required
 def daily_check_view(check_id):
-    """عرض تفاصيل فحص يومي"""
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, """
-        SELECT dc.*, c.name as car_name, d.name as driver_name
-        FROM daily_checks dc
-        JOIN cars c ON dc.car_id = c.id
-        JOIN drivers d ON dc.driver_id = d.id
-        WHERE dc.id = ?
-    """, (check_id,))
+    execute_query(cursor, "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE dc.id = ?", (check_id,))
     check = cursor.fetchone()
     conn.close()
     if not check:
@@ -1356,29 +1169,22 @@ def daily_check_view(check_id):
         return redirect(url_for('daily_checks_list'))
     return render_template('daily_check_view.html', check=check)
 
-
 @app.route('/daily_checks/edit/<int:check_id>', methods=['POST'])
 @admin_required
 def daily_check_edit(check_id):
-    """حفظ تعديلات المسؤول على الفحص"""
     admin_notes = request.form.get('admin_notes', '')
     has_issue = 1 if request.form.get('has_issue') else 0
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, "UPDATE daily_checks SET admin_notes=?, has_issue=? WHERE id=?",
-                  (admin_notes, has_issue, check_id))
+    execute_query(cursor, "UPDATE daily_checks SET admin_notes=?, has_issue=? WHERE id=?", (admin_notes, has_issue, check_id))
     conn.commit()
     conn.close()
     flash('تم حفظ التعديلات', 'success')
     return redirect(url_for('daily_check_view', check_id=check_id))
 
-
-# 🆕 ============== حذف الفحص اليومي (للمسؤول فقط) ==============
-
 @app.route('/daily_checks/delete/<int:check_id>')
 @admin_required
 def daily_check_delete(check_id):
-    """حذف فحص يومي (للمسؤول فقط)"""
     try:
         conn = get_connection()
         cursor = conn.cursor()
@@ -1388,11 +1194,9 @@ def daily_check_delete(check_id):
             conn.close()
             flash('الفحص غير موجود', 'error')
             return redirect(url_for('daily_checks_list'))
-        # حذف الصور من Supabase (إذا موجودة)
         for img_field in ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image']:
             img_name = check.get(img_field) if check else None
-            if img_name:
-                delete_image_from_supabase(img_name)
+            if img_name: delete_image_from_supabase(img_name)
         execute_query(cursor, "DELETE FROM daily_checks WHERE id=?", (check_id,))
         conn.commit()
         conn.close()
@@ -1401,9 +1205,6 @@ def daily_check_delete(check_id):
         flash(f'خطأ في الحذف: {str(e)}', 'error')
     return redirect(url_for('daily_checks_list'))
 
-
-# ============== السائقين ==============
-
 @app.route('/drivers')
 @login_required
 def drivers():
@@ -1411,35 +1212,18 @@ def drivers():
     cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM drivers ORDER BY id")
     drivers_list = cursor.fetchall()
-    execute_query(cursor, """
-        SELECT tm.*, d.name as driver_name
-        FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id
-        ORDER BY tm.date DESC, tm.id DESC
-    """)
+    execute_query(cursor, "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id ORDER BY tm.date DESC, tm.id DESC")
     all_missions = cursor.fetchall()
-    execute_query(cursor, """
-        SELECT o.*, d.name as driver_name
-        FROM overtime o JOIN drivers d ON o.driver_id = d.id
-        ORDER BY o.date DESC, o.id DESC
-    """)
+    execute_query(cursor, "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id ORDER BY o.date DESC, o.id DESC")
     all_overtime = cursor.fetchall()
     missions_by_driver = {}
-    for m in all_missions:
-        did = m['driver_id']
-        missions_by_driver.setdefault(did, []).append(dict(m))
+    for m in all_missions: missions_by_driver.setdefault(m['driver_id'], []).append(dict(m))
     overtime_by_driver = {}
-    for o in all_overtime:
-        did = o['driver_id']
-        overtime_by_driver.setdefault(did, []).append(dict(o))
+    for o in all_overtime: overtime_by_driver.setdefault(o['driver_id'], []).append(dict(o))
     execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name")
     active_drivers = cursor.fetchall()
     conn.close()
-    return render_template('drivers.html',
-                         drivers=drivers_list,
-                         active_drivers=active_drivers,
-                         missions_by_driver=missions_by_driver,
-                         overtime_by_driver=overtime_by_driver)
-
+    return render_template('drivers.html', drivers=drivers_list, active_drivers=active_drivers, missions_by_driver=missions_by_driver, overtime_by_driver=overtime_by_driver)
 
 @app.route('/drivers/add', methods=['POST'])
 @admin_required
@@ -1455,7 +1239,6 @@ def add_driver():
     flash('تم إضافة السائق', 'success')
     return redirect(url_for('drivers'))
 
-
 @app.route('/drivers/edit/<int:driver_id>', methods=['GET', 'POST'])
 @admin_required
 def edit_driver(driver_id):
@@ -1465,8 +1248,7 @@ def edit_driver(driver_id):
         name = request.form['name']
         phone = request.form.get('phone', '')
         notes = request.form.get('notes', '')
-        execute_query(cursor, "UPDATE drivers SET name=?, phone=?, notes=? WHERE id=?",
-                       (name, phone, notes, driver_id))
+        execute_query(cursor, "UPDATE drivers SET name=?, phone=?, notes=? WHERE id=?", (name, phone, notes, driver_id))
         conn.commit()
         conn.close()
         flash('تم تعديل السائق', 'success')
@@ -1475,7 +1257,6 @@ def edit_driver(driver_id):
     driver = cursor.fetchone()
     conn.close()
     return render_template('drivers.html', drivers=[], edit_driver=driver)
-
 
 @app.route('/drivers/delete/<int:driver_id>')
 @admin_required
@@ -1488,23 +1269,17 @@ def delete_driver(driver_id):
     flash('تم حذف السائق', 'success')
     return redirect(url_for('drivers'))
 
-
 @app.route('/travel_missions')
 @login_required
 def travel_missions():
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, """
-        SELECT tm.*, d.name as driver_name
-        FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id
-        ORDER BY tm.date DESC, tm.id DESC
-    """)
+    execute_query(cursor, "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id ORDER BY tm.date DESC, tm.id DESC")
     missions = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name")
     drivers_list = cursor.fetchall()
     conn.close()
     return render_template('travel_missions.html', missions=missions, drivers=drivers_list)
-
 
 @app.route('/travel_missions/add', methods=['POST'])
 @admin_required
@@ -1516,22 +1291,16 @@ def add_travel_mission():
     departure_time = request.form.get('departure_time', '')
     return_time = request.form.get('return_time', '')
     notes = request.form.get('notes', '')
-    try:
-        distance_km = float(distance_km)
-    except (ValueError, TypeError):
-        distance_km = 0
+    try: distance_km = float(distance_km)
+    except: distance_km = 0
     is_travel = 1 if distance_km >= 75 else 0
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, """
-        INSERT INTO travel_missions (date, driver_id, description, distance_km, is_travel, departure_time, return_time, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (date, driver_id, description, distance_km, is_travel, departure_time, return_time, notes))
+    execute_query(cursor, "INSERT INTO travel_missions (date, driver_id, description, distance_km, is_travel, departure_time, return_time, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (date, driver_id, description, distance_km, is_travel, departure_time, return_time, notes))
     conn.commit()
     conn.close()
     flash('تم حفظ مهمة السفر', 'success')
     return redirect(url_for('drivers'))
-
 
 @app.route('/travel_missions/delete/<int:m_id>')
 @admin_required
@@ -1544,23 +1313,17 @@ def delete_travel_mission(m_id):
     flash('تم حذف مهمة السفر', 'success')
     return redirect(url_for('drivers'))
 
-
 @app.route('/overtime')
 @login_required
 def overtime():
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, """
-        SELECT o.*, d.name as driver_name
-        FROM overtime o JOIN drivers d ON o.driver_id = d.id
-        ORDER BY o.date DESC, o.id DESC
-    """)
+    execute_query(cursor, "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id ORDER BY o.date DESC, o.id DESC")
     overtimes = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name")
     drivers_list = cursor.fetchall()
     conn.close()
     return render_template('overtime.html', overtimes=overtimes, drivers=drivers_list)
-
 
 @app.route('/overtime/add', methods=['POST'])
 @admin_required
@@ -1570,25 +1333,17 @@ def add_overtime():
     morning_hours = request.form.get('morning_hours') or 0
     evening_hours = request.form.get('evening_hours') or 0
     notes = request.form.get('notes', '')
-    try:
-        morning_hours = float(morning_hours)
-    except (ValueError, TypeError):
-        morning_hours = 0
-    try:
-        evening_hours = float(evening_hours)
-    except (ValueError, TypeError):
-        evening_hours = 0
+    try: morning_hours = float(morning_hours)
+    except: morning_hours = 0
+    try: evening_hours = float(evening_hours)
+    except: evening_hours = 0
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, """
-        INSERT INTO overtime (date, driver_id, morning_hours, evening_hours, notes)
-        VALUES (?, ?, ?, ?, ?)
-    """, (date, driver_id, morning_hours, evening_hours, notes))
+    execute_query(cursor, "INSERT INTO overtime (date, driver_id, morning_hours, evening_hours, notes) VALUES (?, ?, ?, ?, ?)", (date, driver_id, morning_hours, evening_hours, notes))
     conn.commit()
     conn.close()
     flash('تم حفظ الإضافي', 'success')
     return redirect(url_for('drivers'))
-
 
 @app.route('/overtime/delete/<int:o_id>')
 @admin_required
@@ -1601,19 +1356,12 @@ def delete_overtime(o_id):
     flash('تم حذف الإضافي', 'success')
     return redirect(url_for('drivers'))
 
-
-# ============== الوقود ==============
-
 @app.route('/fuel')
 @login_required
 def fuel():
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, """
-        SELECT f.*, c.name as car_name, d.name as driver_name
-        FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id
-        ORDER BY f.id DESC LIMIT 50
-    """)
+    execute_query(cursor, "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id ORDER BY f.id DESC LIMIT 50")
     fuel_records = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name")
     cars_list = cursor.fetchall()
@@ -1621,7 +1369,6 @@ def fuel():
     drivers_list = cursor.fetchall()
     conn.close()
     return render_template('fuel.html', fuel_records=fuel_records, cars=cars_list, drivers=drivers_list)
-
 
 @app.route('/fuel/add', methods=['POST'])
 @admin_required
@@ -1640,15 +1387,11 @@ def add_fuel():
     notes = request.form.get('notes', '')
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, """
-        INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes))
+    execute_query(cursor, "INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes))
     conn.commit()
     conn.close()
     flash('تم حفظ تعبئة الوقود', 'success')
     return redirect(url_for('fuel'))
-
 
 @app.route('/fuel/edit/<int:fuel_id>', methods=['GET', 'POST'])
 @admin_required
@@ -1668,11 +1411,7 @@ def edit_fuel(fuel_id):
         final = request.form.get('final_cost') or None
         km = request.form.get('km_at_fill') or None
         notes = request.form.get('notes', '')
-        execute_query(cursor, """
-            UPDATE fuel SET fuel_date=?, car_id=?, driver_id=?, fuel_type=?, source=?, payment_status=?,
-            liters=?, price_per_liter=?, total_cost=?, final_cost=?, km_at_fill=?, notes=?
-            WHERE id=?
-        """, (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, fuel_id))
+        execute_query(cursor, "UPDATE fuel SET fuel_date=?, car_id=?, driver_id=?, fuel_type=?, source=?, payment_status=?, liters=?, price_per_liter=?, total_cost=?, final_cost=?, km_at_fill=?, notes=? WHERE id=?", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, fuel_id))
         conn.commit()
         conn.close()
         flash('تم تعديل تعبئة الوقود', 'success')
@@ -1686,7 +1425,6 @@ def edit_fuel(fuel_id):
     conn.close()
     return render_template('fuel.html', fuel_records=[], cars=cars_list, drivers=drivers_list, edit_fuel=record)
 
-
 @app.route('/fuel/delete/<int:fuel_id>')
 @admin_required
 def delete_fuel(fuel_id):
@@ -1698,25 +1436,17 @@ def delete_fuel(fuel_id):
     flash('تم حذف التعبئة', 'success')
     return redirect(url_for('fuel'))
 
-
-# ============== الصيانة ==============
-
 @app.route('/maintenance')
 @login_required
 def maintenance():
     conn = get_connection()
     cursor = conn.cursor()
-    execute_query(cursor, """
-        SELECT m.*, c.name as car_name
-        FROM maintenance m JOIN cars c ON m.car_id = c.id
-        ORDER BY m.id DESC LIMIT 100
-    """)
+    execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id ORDER BY m.id DESC LIMIT 100")
     records = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name")
     cars_list = cursor.fetchall()
     conn.close()
     return render_template('maintenance.html', records=records, cars=cars_list)
-
 
 @app.route('/maintenance/add', methods=['POST'])
 @admin_required
@@ -1727,6 +1457,7 @@ def add_maintenance():
     category = request.form.get('category', 'دورية')
     km = request.form.get('km_at_service') or None
     cost = request.form.get('cost') or None
+    currency = request.form.get('currency', 'ل.س')
     invoice_number = request.form.get('invoice_number', '')
     workshop = request.form.get('workshop', '')
     notes = request.form.get('notes', '')
@@ -1744,15 +1475,13 @@ def add_maintenance():
     conn = get_connection()
     cursor = conn.cursor()
     execute_query(cursor, """
-        INSERT INTO maintenance (date, car_id, type, category, km_at_service, cost, 
-        invoice_number, invoice_image, workshop, notes, next_service_km, next_service_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (date, car_id, mtype, category, km, cost, invoice_number, invoice_image, workshop, notes, next_km, next_date))
+        INSERT INTO maintenance (date, car_id, type, category, km_at_service, cost, currency, invoice_number, invoice_image, workshop, notes, next_service_km, next_service_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (date, car_id, mtype, category, km, cost, currency, invoice_number, invoice_image, workshop, notes, next_km, next_date))
     conn.commit()
     conn.close()
     flash('تم حفظ الصيانة', 'success')
     return redirect(url_for('maintenance'))
-
 
 @app.route('/maintenance/edit/<int:m_id>', methods=['GET', 'POST'])
 @admin_required
@@ -1766,6 +1495,7 @@ def edit_maintenance(m_id):
         category = request.form.get('category', 'دورية')
         km = request.form.get('km_at_service') or None
         cost = request.form.get('cost') or None
+        currency = request.form.get('currency', 'ل.س')
         invoice_number = request.form.get('invoice_number', '')
         workshop = request.form.get('workshop', '')
         notes = request.form.get('notes', '')
@@ -1783,11 +1513,8 @@ def edit_maintenance(m_id):
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
                 invoice_image = filename
         execute_query(cursor, """
-            UPDATE maintenance SET date=?, car_id=?, type=?, category=?, km_at_service=?, 
-            cost=?, invoice_number=?, invoice_image=?, workshop=?, notes=?, 
-            next_service_km=?, next_service_date=?
-            WHERE id=?
-        """, (date, car_id, mtype, category, km, cost, invoice_number, invoice_image, workshop, notes, next_km, next_date, m_id))
+            UPDATE maintenance SET date=?, car_id=?, type=?, category=?, km_at_service=?, cost=?, currency=?, invoice_number=?, invoice_image=?, workshop=?, notes=?, next_service_km=?, next_service_date=? WHERE id=?
+        """, (date, car_id, mtype, category, km, cost, currency, invoice_number, invoice_image, workshop, notes, next_km, next_date, m_id))
         conn.commit()
         conn.close()
         flash('تم تعديل الصيانة', 'success')
@@ -1798,7 +1525,6 @@ def edit_maintenance(m_id):
     cars_list = cursor.fetchall()
     conn.close()
     return render_template('maintenance.html', records=[], cars=cars_list, edit_maintenance=record)
-
 
 @app.route('/maintenance/delete/<int:m_id>')
 @admin_required
@@ -1811,31 +1537,17 @@ def delete_maintenance(m_id):
     flash('تم حذف الصيانة', 'success')
     return redirect(url_for('maintenance'))
 
-
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
-    """تحميل صورة - من Supabase Storage أو من المجلد المحلي"""
-    if not filename:
-        return jsonify({'error': 'not found'}), 404
-    
-    # إذا Supabase مضبوط، نحول لـ Supabase Storage
+    if not filename: return jsonify({'error': 'not found'}), 404
     if SUPABASE_URL and SUPABASE_BUCKET:
         try:
-            # نتحقق إنه الملف موجود في المجلد المحلي (احتياطي)
             local_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            if os.path.exists(local_path):
-                return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-        except Exception:
-            pass
-        # نرجع رابط Supabase مباشر
+            if os.path.exists(local_path): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
-    
-    # Fallback - محلي
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-
-# ============== التقارير الشهرية ==============
-
+    # ============== التقارير الشهرية ==============
 @app.route('/reports')
 @login_required
 def reports():
@@ -1859,101 +1571,63 @@ def reports():
     if request.args.get('month'):
         month_str = f"{year:04d}-{month:02d}"
         query_trips = """
-            SELECT t.*, c.name as car_name, d.name as driver_name,
-                   rp.name as party_name
-            FROM trips t 
-            JOIN cars c ON t.car_id = c.id 
-            JOIN drivers d ON t.driver_id = d.id
+            SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name
+            FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id
             LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id
             WHERE t.trip_date LIKE ?
         """
         params = [month_str + '%']
-        if car_id:
-            query_trips += " AND t.car_id = ?"
-            params.append(car_id)
-        if driver_id:
-            query_trips += " AND t.driver_id = ?"
-            params.append(driver_id)
-        if requesting_party_id:
-            query_trips += " AND t.requesting_party_id = ?"
-            params.append(requesting_party_id)
-        query_trips += """ ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, 
-                          COALESCE(t.exit_time, '00:00') DESC, t.id DESC"""
+        if car_id: query_trips += " AND t.car_id = ?"; params.append(car_id)
+        if driver_id: query_trips += " AND t.driver_id = ?"; params.append(driver_id)
+        if requesting_party_id: query_trips += " AND t.requesting_party_id = ?"; params.append(requesting_party_id)
+        query_trips += " ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC"
         execute_query(cursor, query_trips, params)
         all_trips = cursor.fetchall()
         query_fuel = """
             SELECT f.*, c.name as car_name, d.name as driver_name
-            FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id
-            WHERE f.fuel_date LIKE ?
+            FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?
         """
         fuel_params = [month_str + '%']
-        if car_id:
-            query_fuel += " AND f.car_id = ?"
-            fuel_params.append(car_id)
-        if driver_id:
-            query_fuel += " AND f.driver_id = ?"
-            fuel_params.append(driver_id)
+        if car_id: query_fuel += " AND f.car_id = ?"; fuel_params.append(car_id)
+        if driver_id: query_fuel += " AND f.driver_id = ?"; fuel_params.append(driver_id)
         if payment_filter:
-            if payment_filter == 'خزان الشركة':
-                query_fuel += " AND f.source = ?"
-                fuel_params.append('خزان الشركة')
-            elif payment_filter == 'كازية':
-                query_fuel += " AND f.source = ?"
-                fuel_params.append('كازية')
-            else:
-                query_fuel += " AND f.payment_status = ?"
-                fuel_params.append(payment_filter)
+            if payment_filter == 'خزان الشركة': query_fuel += " AND f.source = ?"; fuel_params.append('خزان الشركة')
+            elif payment_filter == 'كازية': query_fuel += " AND f.source = ?"; fuel_params.append('كازية')
+            else: query_fuel += " AND f.payment_status = ?"; fuel_params.append(payment_filter)
         execute_query(cursor, query_fuel, fuel_params)
         all_fuel = cursor.fetchall()
         query_maint = """
             SELECT m.*, c.name as car_name
-            FROM maintenance m JOIN cars c ON m.car_id = c.id
-            WHERE m.date LIKE ?
+            FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?
         """
         maint_params = [month_str + '%']
-        if car_id:
-            query_maint += " AND m.car_id = ?"
-            maint_params.append(car_id)
+        if car_id: query_maint += " AND m.car_id = ?"; maint_params.append(car_id)
         execute_query(cursor, query_maint, maint_params)
         all_maint = cursor.fetchall()
         query_travel = """
-            SELECT tm.*, d.name as driver_name
-            FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id
-            WHERE tm.date LIKE ?
+            SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id WHERE tm.date LIKE ?
         """
         travel_params = [month_str + '%']
-        if driver_id:
-            query_travel += " AND tm.driver_id = ?"
-            travel_params.append(driver_id)
+        if driver_id: query_travel += " AND tm.driver_id = ?"; travel_params.append(driver_id)
         execute_query(cursor, query_travel, travel_params)
         all_travel = cursor.fetchall()
         query_overtime = """
-            SELECT o.*, d.name as driver_name
-            FROM overtime o JOIN drivers d ON o.driver_id = d.id
-            WHERE o.date LIKE ?
+            SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE o.date LIKE ?
         """
         overtime_params = [month_str + '%']
-        if driver_id:
-            query_overtime += " AND o.driver_id = ?"
-            overtime_params.append(driver_id)
+        if driver_id: query_overtime += " AND o.driver_id = ?"; overtime_params.append(driver_id)
         execute_query(cursor, query_overtime, overtime_params)
         all_overtime = cursor.fetchall()
         query_checks = """
             SELECT dc.*, c.name as car_name, d.name as driver_name
-            FROM daily_checks dc
-            JOIN cars c ON dc.car_id = c.id
-            JOIN drivers d ON dc.driver_id = d.id
-            WHERE dc.check_date LIKE ?
+            FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE dc.check_date LIKE ?
         """
         checks_params = [month_str + '%']
-        if car_id:
-            query_checks += " AND dc.car_id = ?"
-            checks_params.append(car_id)
-        if driver_id:
-            query_checks += " AND dc.driver_id = ?"
-            checks_params.append(driver_id)
+        if car_id: query_checks += " AND dc.car_id = ?"; checks_params.append(car_id)
+        if driver_id: query_checks += " AND dc.driver_id = ?"; checks_params.append(driver_id)
         execute_query(cursor, query_checks, checks_params)
         all_checks = cursor.fetchall()
+
         cars_report = []
         total_trips = len(all_trips)
         total_km = sum(t['distance'] or 0 for t in all_trips)
@@ -1965,23 +1639,22 @@ def reports():
         tank_liters = sum(f['liters'] or 0 for f in all_fuel if f['source'] == 'خزان الشركة')
         station_liters = sum(f['liters'] or 0 for f in all_fuel if f['source'] == 'كازية')
         gateway_liters = sum(f['liters'] or 0 for f in all_fuel if f['payment_status'] == 'اشتراك شركة البوابة الذهبية')
-        total_cost = 0
-        for f in all_fuel:
-            total_cost += get_effective_cost(f)
-        total_maint_cost = sum(m['cost'] or 0 for m in all_maint)
-        if car_id:
-            car_list = [c for c in cars_list if str(c['id']) == str(car_id)]
+        total_cost = sum(get_effective_cost(f) for f in all_fuel)
+        
+        total_maint_cost_syp = sum(m['cost'] or 0 for m in all_maint if m.get('currency', 'ل.س') == 'ل.س')
+        total_maint_cost_usd = sum(m['cost'] or 0 for m in all_maint if m.get('currency') == 'دولار')
+
+        if car_id: car_list = [c for c in cars_list if str(c['id']) == str(car_id)]
         else:
             car_ids_with_data = set(t['car_id'] for t in all_trips) | set(f['car_id'] for f in all_fuel) | set(m['car_id'] for m in all_maint) | set(dc['car_id'] for dc in all_checks)
             car_list = [c for c in cars_list if c['id'] in car_ids_with_data]
+        
         for c in car_list:
             c_trips = [t for t in all_trips if t['car_id'] == c['id']]
             c_fuel = [f for f in all_fuel if f['car_id'] == c['id']]
             c_maint = [m for m in all_maint if m['car_id'] == c['id']]
             c_checks = [dc for dc in all_checks if dc['car_id'] == c['id']]
-            car_fuel_cost = 0
-            for f in c_fuel:
-                car_fuel_cost += get_effective_cost(f)
+            car_fuel_cost = sum(get_effective_cost(f) for f in c_fuel)
             c_gasoline = sum(f['liters'] or 0 for f in c_fuel if f['fuel_type'] == 'بنزين')
             c_diesel = sum(f['liters'] or 0 for f in c_fuel if f['fuel_type'] == 'ديزل')
             c_gasoline_cost = sum(get_effective_cost(f) for f in c_fuel if f['fuel_type'] == 'بنزين')
@@ -1992,6 +1665,10 @@ def reports():
             c_total_km = sum(t['distance'] or 0 for t in c_trips)
             c_cost_per_km = get_car_cost_per_km(c['id'], conn)
             c_liters_per_100 = get_car_liters_per_100km(c['id'], conn)
+            
+            c_maint_syp = sum(m['cost'] or 0 for m in c_maint if m.get('currency', 'ل.س') == 'ل.س')
+            c_maint_usd = sum(m['cost'] or 0 for m in c_maint if m.get('currency') == 'دولار')
+            
             c_trips_with_cost = []
             for t in c_trips:
                 t_dict = dict(t)
@@ -2000,42 +1677,25 @@ def reports():
                 c_trips_with_cost.append(t_dict)
             cars_report.append({
                 'car_name': c['name'], 'trips': c_trips_with_cost, 'fuel': c_fuel, 'maintenance': c_maint,
-                'checks': c_checks,
-                'checks_count': len(c_checks),
-                'total_km': c_total_km,
-                'total_liters': sum(f['liters'] or 0 for f in c_fuel),
-                'total_fuel_cost': car_fuel_cost,
-                'total_maint_cost': sum(m['cost'] or 0 for m in c_maint),
+                'checks': c_checks, 'checks_count': len(c_checks), 'total_km': c_total_km,
+                'total_liters': sum(f['liters'] or 0 for f in c_fuel), 'total_fuel_cost': car_fuel_cost,
+                'total_maint_cost_syp': c_maint_syp, 'total_maint_cost_usd': c_maint_usd,
                 'gasoline_liters': c_gasoline, 'diesel_liters': c_diesel,
                 'gasoline_cost': c_gasoline_cost, 'diesel_cost': c_diesel_cost,
-                'tank_liters': c_tank, 'station_liters': c_station,
-                'gateway_liters': c_gateway,
-                'cost_per_km': c_cost_per_km,
-                'liters_per_100': c_liters_per_100,
+                'tank_liters': c_tank, 'station_liters': c_station, 'gateway_liters': c_gateway,
+                'cost_per_km': c_cost_per_km, 'liters_per_100': c_liters_per_100,
             })
+        
         parties_report = []
         for p in parties_list:
             p_trips = [t for t in all_trips if t.get('requesting_party_id') == p['id']]
-            if not p_trips and requesting_party_id:
-                continue
+            if not p_trips and requesting_party_id: continue
             p_km = sum(t['distance'] or 0 for t in p_trips)
-            p_cost = 0
-            for t in p_trips:
-                cpk = get_car_estimated_cost_per_km(t['car_id'], conn)
-                if cpk:
-                    p_cost += (t['distance'] or 0) * cpk
-            parties_report.append({
-                'party_name': p['name'],
-                'trips_count': len(p_trips),
-                'total_km': p_km,
-                'total_cost': p_cost,
-            })
+            p_cost = sum((t['distance'] or 0) * (get_car_estimated_cost_per_km(t['car_id'], conn) or 0) for t in p_trips)
+            parties_report.append({'party_name': p['name'], 'trips_count': len(p_trips), 'total_km': p_km, 'total_cost': p_cost})
+
         drivers_report = []
-        if driver_id:
-            drivers_to_report = [d for d in drivers_list if str(d['id']) == str(driver_id)]
-        else:
-            driver_ids_with_data = set(tm['driver_id'] for tm in all_travel) | set(o['driver_id'] for o in all_overtime) | set(t['driver_id'] for t in all_trips) | set(dc['driver_id'] for dc in all_checks)
-            drivers_to_report = [d for d in drivers_list if d['id'] in driver_ids_with_data]
+        drivers_to_report = [d for d in drivers_list if str(d['id']) == str(driver_id)] if driver_id else [d for d in drivers_list if d['id'] in (set(tm['driver_id'] for tm in all_travel) | set(o['driver_id'] for o in all_overtime) | set(t['driver_id'] for t in all_trips) | set(dc['driver_id'] for dc in all_checks))]
         for d in drivers_to_report:
             d_travel = [tm for tm in all_travel if tm['driver_id'] == d['id']]
             d_overtime = [o for o in all_overtime if o['driver_id'] == d['id']]
@@ -2046,43 +1706,23 @@ def reports():
             d_morning = sum(o['morning_hours'] or 0 for o in d_overtime)
             d_evening = sum(o['evening_hours'] or 0 for o in d_overtime)
             drivers_report.append({
-                'driver_name': d['name'],
-                'travel_missions': d_travel,
-                'overtimes': d_overtime,
-                'trips': d_trips,
-                'checks': d_checks,
-                'checks_count': len(d_checks),
-                'travel_count': d_travel_count,
-                'travel_km': d_travel_km,
-                'morning_hours': d_morning,
-                'evening_hours': d_evening,
-                'total_overtime': d_morning + d_evening,
-                'trips_count': len(d_trips),
+                'driver_name': d['name'], 'travel_missions': d_travel, 'overtimes': d_overtime, 'trips': d_trips,
+                'checks': d_checks, 'checks_count': len(d_checks), 'travel_count': d_travel_count, 'travel_km': d_travel_km,
+                'morning_hours': d_morning, 'evening_hours': d_evening, 'total_overtime': d_morning + d_evening, 'trips_count': len(d_trips),
             })
+        
         report_data = {
             'summary': {
-                'total_trips': total_trips, 'total_km': total_km,
-                'total_liters': total_liters, 'total_fuel_cost': total_cost,
-                'total_maint_cost': total_maint_cost,
-                'total_checks': len(all_checks),
-                'gasoline_liters': gasoline_liters, 'diesel_liters': diesel_liters,
-                'gasoline_cost': gasoline_cost, 'diesel_cost': diesel_cost,
-                'tank_liters': tank_liters, 'station_liters': station_liters,
-                'gateway_liters': gateway_liters,
+                'total_trips': total_trips, 'total_km': total_km, 'total_liters': total_liters, 'total_fuel_cost': total_cost,
+                'total_maint_cost_syp': total_maint_cost_syp, 'total_maint_cost_usd': total_maint_cost_usd,
+                'total_checks': len(all_checks), 'gasoline_liters': gasoline_liters, 'diesel_liters': diesel_liters,
+                'gasoline_cost': gasoline_cost, 'diesel_cost': diesel_cost, 'tank_liters': tank_liters,
+                'station_liters': station_liters, 'gateway_liters': gateway_liters,
             },
-            'cars': cars_report,
-            'parties': parties_report,
-            'drivers': drivers_report,
+            'cars': cars_report, 'parties': parties_report, 'drivers': drivers_report,
         }
     conn.close()
-    return render_template('reports.html',
-                         cars=cars_list, drivers=drivers_list, parties=parties_list,
-                         years=years, selected_month=month, selected_year=year,
-                         selected_car=car_id, selected_driver=driver_id,
-                         selected_party=requesting_party_id,
-                         report_data=report_data, report_type=report_type,
-                         payment_filter=payment_filter)
-
+    return render_template('reports.html', cars=cars_list, drivers=drivers_list, parties=parties_list, years=years, selected_month=month, selected_year=year, selected_car=car_id, selected_driver=driver_id, selected_party=requesting_party_id, report_data=report_data, report_type=report_type, payment_filter=payment_filter)
 
 @app.route('/reports/drivers')
 @login_required
@@ -2094,48 +1734,26 @@ def reports_drivers():
     cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM drivers ORDER BY name")
     drivers_list = cursor.fetchall()
-    query_travel = """
-        SELECT tm.*, d.name as driver_name
-        FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id
-        WHERE 1=1
-    """
+    query_travel = "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id WHERE 1=1"
     travel_params = []
-    if driver_id:
-        query_travel += " AND tm.driver_id = ?"
-        travel_params.append(driver_id)
-    if date_from:
-        query_travel += " AND tm.date >= ?"
-        travel_params.append(date_from)
-    if date_to:
-        query_travel += " AND tm.date <= ?"
-        travel_params.append(date_to)
+    if driver_id: query_travel += " AND tm.driver_id = ?"; travel_params.append(driver_id)
+    if date_from: query_travel += " AND tm.date >= ?"; travel_params.append(date_from)
+    if date_to: query_travel += " AND tm.date <= ?"; travel_params.append(date_to)
     query_travel += " ORDER BY tm.date DESC, tm.id DESC"
     execute_query(cursor, query_travel, travel_params)
     all_travel = cursor.fetchall()
-    query_overtime = """
-        SELECT o.*, d.name as driver_name
-        FROM overtime o JOIN drivers d ON o.driver_id = d.id
-        WHERE 1=1
-    """
+    
+    query_overtime = "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE 1=1"
     overtime_params = []
-    if driver_id:
-        query_overtime += " AND o.driver_id = ?"
-        overtime_params.append(driver_id)
-    if date_from:
-        query_overtime += " AND o.date >= ?"
-        overtime_params.append(date_from)
-    if date_to:
-        query_overtime += " AND o.date <= ?"
-        overtime_params.append(date_to)
+    if driver_id: query_overtime += " AND o.driver_id = ?"; overtime_params.append(driver_id)
+    if date_from: query_overtime += " AND o.date >= ?"; overtime_params.append(date_from)
+    if date_to: query_overtime += " AND o.date <= ?"; overtime_params.append(date_to)
     query_overtime += " ORDER BY o.date DESC, o.id DESC"
     execute_query(cursor, query_overtime, overtime_params)
     all_overtime = cursor.fetchall()
     conn.close()
-    if driver_id:
-        drivers_to_report = [d for d in drivers_list if str(d['id']) == str(driver_id)]
-    else:
-        driver_ids_with_data = set(tm['driver_id'] for tm in all_travel) | set(o['driver_id'] for o in all_overtime)
-        drivers_to_report = [d for d in drivers_list if d['id'] in driver_ids_with_data]
+    
+    drivers_to_report = [d for d in drivers_list if str(d['id']) == str(driver_id)] if driver_id else [d for d in drivers_list if d['id'] in (set(tm['driver_id'] for tm in all_travel) | set(o['driver_id'] for o in all_overtime))]
     drivers_report = []
     for d in drivers_to_report:
         d_travel = [tm for tm in all_travel if tm['driver_id'] == d['id']]
@@ -2145,25 +1763,13 @@ def reports_drivers():
         d_morning = sum(o['morning_hours'] or 0 for o in d_overtime)
         d_evening = sum(o['evening_hours'] or 0 for o in d_overtime)
         drivers_report.append({
-            'driver_name': d['name'],
-            'travel_missions': d_travel,
-            'overtimes': d_overtime,
-            'travel_count': d_travel_count,
-            'travel_km': d_travel_km,
-            'morning_hours': d_morning,
-            'evening_hours': d_evening,
-            'total_overtime': d_morning + d_evening,
+            'driver_name': d['name'], 'travel_missions': d_travel, 'overtimes': d_overtime,
+            'travel_count': d_travel_count, 'travel_km': d_travel_km,
+            'morning_hours': d_morning, 'evening_hours': d_evening, 'total_overtime': d_morning + d_evening,
         })
     drivers_by_name = {dr['driver_name']: dr for dr in drivers_report}
     drivers_by_name = dict(sorted(drivers_by_name.items()))
-    return render_template('reports_drivers.html',
-                         drivers=drivers_list,
-                         drivers_report=drivers_report,
-                         drivers_by_name=drivers_by_name,
-                         selected_driver=driver_id,
-                         date_from=date_from, date_to=date_to,
-                         has_filter=bool(driver_id or date_from or date_to))
-
+    return render_template('reports_drivers.html', drivers=drivers_list, drivers_report=drivers_report, drivers_by_name=drivers_by_name, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=bool(driver_id or date_from or date_to))
 
 @app.route('/reports/trips')
 @login_required
@@ -2181,47 +1787,30 @@ def reports_trips():
     drivers_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY name")
     parties_list = cursor.fetchall()
-    query = """
-        SELECT t.*, c.name as car_name, d.name as driver_name,
-               rp.name as party_name
-        FROM trips t 
-        JOIN cars c ON t.car_id = c.id 
-        JOIN drivers d ON t.driver_id = d.id
-        LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id
-        WHERE 1=1
-    """
+    
+    query = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE 1=1"
     params = []
-    if car_id:
-        query += " AND t.car_id = ?"
-        params.append(car_id)
-    if driver_id:
-        query += " AND t.driver_id = ?"
-        params.append(driver_id)
-    if requesting_party_id:
-        query += " AND t.requesting_party_id = ?"
-        params.append(requesting_party_id)
-    if date_from:
-        query += " AND t.trip_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND t.trip_date <= ?"
-        params.append(date_to)
-    query += """ ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, 
-                 COALESCE(t.exit_time, '00:00') DESC, t.id DESC"""
+    if car_id: query += " AND t.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND t.driver_id = ?"; params.append(driver_id)
+    if requesting_party_id: query += " AND t.requesting_party_id = ?"; params.append(requesting_party_id)
+    if date_from: query += " AND t.trip_date >= ?"; params.append(date_from)
+    if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
+    query += " ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC"
     execute_query(cursor, query, params)
     trips = cursor.fetchall()
+    
     total_trips = len(trips)
     total_km = sum(t['distance'] or 0 for t in trips)
     by_car = {}
     for t in trips:
-        if t['car_name'] not in by_car:
-            by_car[t['car_name']] = {'count': 0, 'km': 0}
+        if t['car_name'] not in by_car: by_car[t['car_name']] = {'count': 0, 'km': 0}
         by_car[t['car_name']]['count'] += 1
         by_car[t['car_name']]['km'] += t['distance'] or 0
+        
     cost_per_km_map = {}
     execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
-    for row in cursor.fetchall():
-        cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+    for row in cursor.fetchall(): cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+    
     trips_with_cost = []
     total_cost = 0
     for t in trips:
@@ -2229,27 +1818,18 @@ def reports_trips():
         cpk = cost_per_km_map.get(t['car_id'])
         t_dict['cost_per_km'] = cpk
         t_dict['trip_cost'] = ((t['distance'] or 0) * cpk) if cpk else None
-        if t_dict['trip_cost']:
-            total_cost += t_dict['trip_cost']
+        if t_dict['trip_cost']: total_cost += t_dict['trip_cost']
         trips_with_cost.append(t_dict)
+        
     trips_by_car = {}
     for t in trips_with_cost:
         car_name = t['car_name']
-        if car_name not in trips_by_car:
-            trips_by_car[car_name] = []
+        if car_name not in trips_by_car: trips_by_car[car_name] = []
         trips_by_car[car_name].append(t)
     trips_by_car = dict(sorted(trips_by_car.items()))
     conn.close()
     summary = {'total_trips': total_trips, 'total_km': total_km, 'total_cost': total_cost, 'by_car': by_car}
-    return render_template('reports_trips.html',
-                         cars=cars_list, drivers=drivers_list, parties=parties_list,
-                         trips=trips_with_cost, trips_by_car=trips_by_car,
-                         summary=summary,
-                         selected_car=car_id, selected_driver=driver_id,
-                         selected_party=requesting_party_id,
-                         date_from=date_from, date_to=date_to,
-                         has_filter=bool(car_id or driver_id or requesting_party_id or date_from or date_to))
-
+    return render_template('reports_trips.html', cars=cars_list, drivers=drivers_list, parties=parties_list, trips=trips_with_cost, trips_by_car=trips_by_car, summary=summary, selected_car=car_id, selected_driver=driver_id, selected_party=requesting_party_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or requesting_party_id or date_from or date_to))
 
 @app.route('/reports/requesting_parties')
 @login_required
@@ -2261,37 +1841,19 @@ def reports_requesting_parties():
     cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY name")
     parties_list = cursor.fetchall()
-    if party_id:
-        parties_to_report = [p for p in parties_list if str(p['id']) == str(party_id)]
-    else:
-        parties_to_report = parties_list
-    query = """
-        SELECT t.*, c.name as car_name, d.name as driver_name,
-               rp.name as party_name
-        FROM trips t 
-        JOIN cars c ON t.car_id = c.id 
-        JOIN drivers d ON t.driver_id = d.id
-        LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id
-        WHERE 1=1
-    """
+    parties_to_report = [p for p in parties_list if str(p['id']) == str(party_id)] if party_id else parties_list
+    query = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE 1=1"
     params = []
-    if party_id:
-        query += " AND t.requesting_party_id = ?"
-        params.append(party_id)
-    if date_from:
-        query += " AND t.trip_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND t.trip_date <= ?"
-        params.append(date_to)
-    query += """ ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, 
-                 COALESCE(t.exit_time, '00:00') DESC, t.id DESC"""
+    if party_id: query += " AND t.requesting_party_id = ?"; params.append(party_id)
+    if date_from: query += " AND t.trip_date >= ?"; params.append(date_from)
+    if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
+    query += " ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC"
     execute_query(cursor, query, params)
     trips = cursor.fetchall()
     cost_per_km_map = {}
     execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
-    for row in cursor.fetchall():
-        cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+    for row in cursor.fetchall(): cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+    
     trips_with_cost = []
     for t in trips:
         t_dict = dict(t)
@@ -2299,44 +1861,23 @@ def reports_requesting_parties():
         t_dict['cost_per_km'] = cpk
         t_dict['trip_cost'] = ((t['distance'] or 0) * cpk) if cpk else None
         trips_with_cost.append(t_dict)
+        
     parties_report = []
     for p in parties_to_report:
         p_trips = [t for t in trips_with_cost if t.get('requesting_party_id') == p['id']]
         p_km = sum(t['distance'] or 0 for t in p_trips)
         p_cost = sum(t['trip_cost'] or 0 for t in p_trips)
         p_cars = set(t['car_name'] for t in p_trips)
-        parties_report.append({
-            'party_id': p['id'],
-            'party_name': p['name'],
-            'party_notes': p['notes'] or '',
-            'trips': p_trips,
-            'trips_count': len(p_trips),
-            'total_km': p_km,
-            'total_cost': p_cost,
-            'cars_count': len(p_cars),
-        })
+        parties_report.append({'party_id': p['id'], 'party_name': p['name'], 'party_notes': p['notes'] or '', 'trips': p_trips, 'trips_count': len(p_trips), 'total_km': p_km, 'total_cost': p_cost, 'cars_count': len(p_cars)})
     total_km_all = sum(t['distance'] or 0 for t in trips_with_cost)
     total_cost_all = sum(t['trip_cost'] or 0 for t in trips_with_cost if t['trip_cost'])
     conn.close()
-    summary = {
-        'total_trips': len(trips_with_cost),
-        'total_km': total_km_all,
-        'total_cost': total_cost_all,
-        'parties_count': len(parties_report),
-    }
-    return render_template('reports_requesting_parties.html',
-                         parties=parties_list,
-                         parties_report=parties_report,
-                         summary=summary,
-                         selected_party=party_id,
-                         date_from=date_from, date_to=date_to,
-                         has_filter=bool(party_id or date_from or date_to))
-
+    summary = {'total_trips': len(trips_with_cost), 'total_km': total_km_all, 'total_cost': total_cost_all, 'parties_count': len(parties_report)}
+    return render_template('reports_requesting_parties.html', parties=parties_list, parties_report=parties_report, summary=summary, selected_party=party_id, date_from=date_from, date_to=date_to, has_filter=bool(party_id or date_from or date_to))
 
 @app.route('/reports/daily_checks')
 @login_required
 def reports_daily_checks():
-    """تقرير الفحوصات اليومية"""
     date_from = request.args.get('date_from') or ''
     date_to = request.args.get('date_to') or ''
     car_id = request.args.get('car_id') or ''
@@ -2347,61 +1888,28 @@ def reports_daily_checks():
     cars_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM drivers ORDER BY name")
     drivers_list = cursor.fetchall()
-    query = """
-        SELECT dc.*, c.name as car_name, d.name as driver_name
-        FROM daily_checks dc
-        JOIN cars c ON dc.car_id = c.id
-        JOIN drivers d ON dc.driver_id = d.id
-        WHERE 1=1
-    """
+    query = "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE 1=1"
     params = []
-    if date_from:
-        query += " AND dc.check_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND dc.check_date <= ?"
-        params.append(date_to)
-    if car_id:
-        query += " AND dc.car_id = ?"
-        params.append(car_id)
-    if driver_id:
-        query += " AND dc.driver_id = ?"
-        params.append(driver_id)
+    if date_from: query += " AND dc.check_date >= ?"; params.append(date_from)
+    if date_to: query += " AND dc.check_date <= ?"; params.append(date_to)
+    if car_id: query += " AND dc.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND dc.driver_id = ?"; params.append(driver_id)
     query += " ORDER BY dc.id DESC"
     execute_query(cursor, query, params)
     checks = cursor.fetchall()
     by_car = {}
     for dc in checks:
-        if dc['car_name'] not in by_car:
-            by_car[dc['car_name']] = {'count': 0, 'with_issue': 0}
+        if dc['car_name'] not in by_car: by_car[dc['car_name']] = {'count': 0, 'with_issue': 0}
         by_car[dc['car_name']]['count'] += 1
-        if dc['has_issue'] == 1:
-            by_car[dc['car_name']]['with_issue'] += 1
+        if dc['has_issue'] == 1: by_car[dc['car_name']]['with_issue'] += 1
     by_driver = {}
     for dc in checks:
-        if dc['driver_name'] not in by_driver:
-            by_driver[dc['driver_name']] = {'count': 0, 'with_issue': 0}
+        if dc['driver_name'] not in by_driver: by_driver[dc['driver_name']] = {'count': 0, 'with_issue': 0}
         by_driver[dc['driver_name']]['count'] += 1
-        if dc['has_issue'] == 1:
-            by_driver[dc['driver_name']]['with_issue'] += 1
-    summary = {
-        'total_checks': len(checks),
-        'with_issue': len([dc for dc in checks if dc['has_issue'] == 1]),
-        'by_car': by_car,
-        'by_driver': by_driver,
-    }
+        if dc['has_issue'] == 1: by_driver[dc['driver_name']]['with_issue'] += 1
+    summary = {'total_checks': len(checks), 'with_issue': len([dc for dc in checks if dc['has_issue'] == 1]), 'by_car': by_car, 'by_driver': by_driver}
     conn.close()
-    return render_template('reports_daily_checks.html',
-                         checks=checks,
-                         cars=cars_list,
-                         drivers=drivers_list,
-                         summary=summary,
-                         selected_car=car_id,
-                         selected_driver=driver_id,
-                         date_from=date_from,
-                         date_to=date_to,
-                         has_filter=bool(car_id or driver_id or date_from or date_to))
-
+    return render_template('reports_daily_checks.html', checks=checks, cars=cars_list, drivers=drivers_list, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or date_from or date_to))
 
 @app.route('/reports/fuel')
 @login_required
@@ -2417,34 +1925,16 @@ def reports_fuel():
     cars_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM drivers ORDER BY name")
     drivers_list = cursor.fetchall()
-    query = """
-        SELECT f.*, c.name as car_name, d.name as driver_name
-        FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id
-        WHERE 1=1
-    """
+    query = "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE 1=1"
     params = []
-    if car_id:
-        query += " AND f.car_id = ?"
-        params.append(car_id)
-    if driver_id:
-        query += " AND f.driver_id = ?"
-        params.append(driver_id)
-    if date_from:
-        query += " AND f.fuel_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND f.fuel_date <= ?"
-        params.append(date_to)
+    if car_id: query += " AND f.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND f.driver_id = ?"; params.append(driver_id)
+    if date_from: query += " AND f.fuel_date >= ?"; params.append(date_from)
+    if date_to: query += " AND f.fuel_date <= ?"; params.append(date_to)
     if payment_filter:
-        if payment_filter == 'خزان الشركة':
-            query += " AND f.source = ?"
-            params.append('خزان الشركة')
-        elif payment_filter == 'كازية':
-            query += " AND f.source = ?"
-            params.append('كازية')
-        else:
-            query += " AND f.payment_status = ?"
-            params.append(payment_filter)
+        if payment_filter == 'خزان الشركة': query += " AND f.source = ?"; params.append('خزان الشركة')
+        elif payment_filter == 'كازية': query += " AND f.source = ?"; params.append('كازية')
+        else: query += " AND f.payment_status = ?"; params.append(payment_filter)
     query += " ORDER BY f.fuel_date DESC, f.km_at_fill DESC, f.id DESC"
     execute_query(cursor, query, params)
     fuel_records = cursor.fetchall()
@@ -2457,15 +1947,12 @@ def reports_fuel():
     tank_liters = sum(f['liters'] or 0 for f in fuel_records if f['source'] == 'خزان الشركة')
     station_liters = sum(f['liters'] or 0 for f in fuel_records if f['source'] == 'كازية')
     gateway_liters = sum(f['liters'] or 0 for f in fuel_records if f['payment_status'] == 'اشتراك شركة البوابة الذهبية')
-    total_cost = 0
-    for f in fuel_records:
-        total_cost += get_effective_cost(f)
+    total_cost = sum(get_effective_cost(f) for f in fuel_records)
     avg_price = total_cost / total_liters if total_liters > 0 else 0
     by_car = {}
     for f in fuel_records:
         car_name = f['car_name']
-        if car_name not in by_car:
-            by_car[car_name] = {'count': 0, 'liters': 0, 'cost': 0, 'cost_estimated': 0, 'car_id': f['car_id'], 'km': 0, 'cost_per_km': 0, 'liters_per_100': 0}
+        if car_name not in by_car: by_car[car_name] = {'count': 0, 'liters': 0, 'cost': 0, 'cost_estimated': 0, 'car_id': f['car_id'], 'km': 0, 'cost_per_km': 0, 'liters_per_100': 0}
         by_car[car_name]['count'] += 1
         by_car[car_name]['liters'] += f['liters'] or 0
         by_car[car_name]['cost'] += get_effective_cost(f)
@@ -2474,27 +1961,12 @@ def reports_fuel():
         cid = by_car[car_name]['car_id']
         execute_query(cursor, "SELECT COALESCE(SUM(distance), 0) as total_km FROM trips WHERE car_id=?", (cid,))
         row = cursor.fetchone()
-        km = row['total_km'] if row else 0
-        by_car[car_name]['km'] = km
+        by_car[car_name]['km'] = row['total_km'] if row else 0
         by_car[car_name]['cost_per_km'] = get_car_cost_per_km(cid, conn)
         by_car[car_name]['liters_per_100'] = get_car_liters_per_100km(cid, conn)
     conn.close()
-    summary = {
-        'total_records': total_records, 'total_liters': total_liters,
-        'total_cost': total_cost, 'avg_price': avg_price, 'by_car': by_car,
-        'gasoline_liters': gasoline_liters, 'diesel_liters': diesel_liters,
-        'gasoline_cost': gasoline_cost, 'diesel_cost': diesel_cost,
-        'tank_liters': tank_liters, 'station_liters': station_liters,
-        'gateway_liters': gateway_liters,
-    }
-    return render_template('reports_fuel.html',
-                         cars=cars_list, drivers=drivers_list,
-                         fuel_records=fuel_records, summary=summary,
-                         selected_car=car_id, selected_driver=driver_id,
-                         date_from=date_from, date_to=date_to,
-                         payment_filter=payment_filter,
-                         has_filter=bool(car_id or driver_id or date_from or date_to or payment_filter))
-
+    summary = {'total_records': total_records, 'total_liters': total_liters, 'total_cost': total_cost, 'avg_price': avg_price, 'by_car': by_car, 'gasoline_liters': gasoline_liters, 'diesel_liters': diesel_liters, 'gasoline_cost': gasoline_cost, 'diesel_cost': diesel_cost, 'tank_liters': tank_liters, 'station_liters': station_liters, 'gateway_liters': gateway_liters}
+    return render_template('reports_fuel.html', cars=cars_list, drivers=drivers_list, fuel_records=fuel_records, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, payment_filter=payment_filter, has_filter=bool(car_id or driver_id or date_from or date_to or payment_filter))
 
 @app.route('/reports/maintenance')
 @login_required
@@ -2508,56 +1980,37 @@ def reports_maintenance():
     cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM cars ORDER BY name")
     cars_list = cursor.fetchall()
-    query = """
-        SELECT m.*, c.name as car_name
-        FROM maintenance m JOIN cars c ON m.car_id = c.id
-        WHERE 1=1
-    """
+    query = "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE 1=1"
     params = []
-    if car_id:
-        query += " AND m.car_id = ?"
-        params.append(car_id)
-    if date_from:
-        query += " AND m.date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND m.date <= ?"
-        params.append(date_to)
-    if mtype:
-        query += " AND m.type = ?"
-        params.append(mtype)
-    if category:
-        query += " AND m.category = ?"
-        params.append(category)
+    if car_id: query += " AND m.car_id = ?"; params.append(car_id)
+    if date_from: query += " AND m.date >= ?"; params.append(date_from)
+    if date_to: query += " AND m.date <= ?"; params.append(date_to)
+    if mtype: query += " AND m.type = ?"; params.append(mtype)
+    if category: query += " AND m.category = ?"; params.append(category)
     query += " ORDER BY m.date DESC, m.km_at_service DESC, m.id DESC"
     execute_query(cursor, query, params)
     records = cursor.fetchall()
     total_records = len(records)
-    total_cost = sum(m['cost'] or 0 for m in records)
+    total_cost_syp = sum(m['cost'] or 0 for m in records if m.get('currency', 'ل.س') == 'ل.س')
+    total_cost_usd = sum(m['cost'] or 0 for m in records if m.get('currency') == 'دولار')
     by_category = {}
     for m in records:
         cat = m['category'] or 'غير محدد'
-        if cat not in by_category:
-            by_category[cat] = {'count': 0, 'cost': 0}
+        if cat not in by_category: by_category[cat] = {'count': 0, 'cost_syp': 0, 'cost_usd': 0}
         by_category[cat]['count'] += 1
-        by_category[cat]['cost'] += m['cost'] or 0
+        if m.get('currency', 'ل.س') == 'ل.س': by_category[cat]['cost_syp'] += m['cost'] or 0
+        else: by_category[cat]['cost_usd'] += m['cost'] or 0
     by_car = {}
     for m in records:
-        if m['car_name'] not in by_car:
-            by_car[m['car_name']] = {'count': 0, 'cost': 0}
+        if m['car_name'] not in by_car: by_car[m['car_name']] = {'count': 0, 'cost_syp': 0, 'cost_usd': 0}
         by_car[m['car_name']]['count'] += 1
-        by_car[m['car_name']]['cost'] += m['cost'] or 0
+        if m.get('currency', 'ل.س') == 'ل.س': by_car[m['car_name']]['cost_syp'] += m['cost'] or 0
+        else: by_car[m['car_name']]['cost_usd'] += m['cost'] or 0
     conn.close()
-    summary = {'total_records': total_records, 'total_cost': total_cost, 'by_category': by_category, 'by_car': by_car}
-    return render_template('reports_maintenance.html',
-                         cars=cars_list, records=records, summary=summary,
-                         selected_car=car_id, date_from=date_from, date_to=date_to,
-                         selected_type=mtype, selected_category=category,
-                         has_filter=bool(car_id or date_from or date_to or mtype or category))
-
+    summary = {'total_records': total_records, 'total_cost_syp': total_cost_syp, 'total_cost_usd': total_cost_usd, 'by_category': by_category, 'by_car': by_car}
+    return render_template('reports_maintenance.html', cars=cars_list, records=records, summary=summary, selected_car=car_id, date_from=date_from, date_to=date_to, selected_type=mtype, selected_category=category, has_filter=bool(car_id or date_from or date_to or mtype or category))
 
 # ============== Excel Exports ==============
-
 @app.route('/reports/export')
 @login_required
 def export_excel():
@@ -2571,107 +2024,57 @@ def export_excel():
     month_str = f"{year:04d}-{month:02d}"
     conn = get_connection()
     cursor = conn.cursor()
-    query = """
-        SELECT t.*, c.name as car_name, d.name as driver_name,
-               rp.name as party_name
-        FROM trips t 
-        JOIN cars c ON t.car_id = c.id 
-        JOIN drivers d ON t.driver_id = d.id
-        LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id
-        WHERE t.trip_date LIKE ?
-    """
+    
+    query = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE t.trip_date LIKE ?"
     params = [month_str + '%']
-    if car_id:
-        query += " AND t.car_id = ?"
-        params.append(car_id)
-    if driver_id:
-        query += " AND t.driver_id = ?"
-        params.append(driver_id)
-    if requesting_party_id:
-        query += " AND t.requesting_party_id = ?"
-        params.append(requesting_party_id)
-    query += """ ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, 
-                 COALESCE(t.exit_time, '00:00') DESC, t.id DESC"""
+    if car_id: query += " AND t.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND t.driver_id = ?"; params.append(driver_id)
+    if requesting_party_id: query += " AND t.requesting_party_id = ?"; params.append(requesting_party_id)
+    query += " ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC"
     execute_query(cursor, query, params)
     trips = cursor.fetchall()
+    
     cost_per_km_map = {}
     execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
-    for row in cursor.fetchall():
-        cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
-    query_f = """
-        SELECT f.*, c.name as car_name, d.name as driver_name
-        FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id
-        WHERE f.fuel_date LIKE ?
-    """
+    for row in cursor.fetchall(): cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+    
+    query_f = "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?"
     params_f = [month_str + '%']
-    if car_id:
-        query_f += " AND f.car_id = ?"
-        params_f.append(car_id)
-    if driver_id:
-        query_f += " AND f.driver_id = ?"
-        params_f.append(driver_id)
+    if car_id: query_f += " AND f.car_id = ?"; params_f.append(car_id)
+    if driver_id: query_f += " AND f.driver_id = ?"; params_f.append(driver_id)
     if payment_filter:
-        if payment_filter == 'خزان الشركة':
-            query_f += " AND f.source = ?"
-            params_f.append('خزان الشركة')
-        elif payment_filter == 'كازية':
-            query_f += " AND f.source = ?"
-            params_f.append('كازية')
-        else:
-            query_f += " AND f.payment_status = ?"
-            params_f.append(payment_filter)
+        if payment_filter == 'خزان الشركة': query_f += " AND f.source = ?"; params_f.append('خزان الشركة')
+        elif payment_filter == 'كازية': query_f += " AND f.source = ?"; params_f.append('كازية')
+        else: query_f += " AND f.payment_status = ?"; params_f.append(payment_filter)
     execute_query(cursor, query_f, params_f)
     fuels = cursor.fetchall()
-    query_m = """
-        SELECT m.*, c.name as car_name
-        FROM maintenance m JOIN cars c ON m.car_id = c.id
-        WHERE m.date LIKE ?
-    """
+    
+    query_m = "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?"
     params_m = [month_str + '%']
-    if car_id:
-        query_m += " AND m.car_id = ?"
-        params_m.append(car_id)
+    if car_id: query_m += " AND m.car_id = ?"; params_m.append(car_id)
     execute_query(cursor, query_m, params_m)
     maints = cursor.fetchall()
-    query_travel = """
-        SELECT tm.*, d.name as driver_name
-        FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id
-        WHERE tm.date LIKE ?
-    """
+    
+    query_travel = "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id WHERE tm.date LIKE ?"
     travel_params = [month_str + '%']
-    if driver_id:
-        query_travel += " AND tm.driver_id = ?"
-        travel_params.append(driver_id)
+    if driver_id: query_travel += " AND tm.driver_id = ?"; travel_params.append(driver_id)
     execute_query(cursor, query_travel, travel_params)
     travels = cursor.fetchall()
-    query_overtime = """
-        SELECT o.*, d.name as driver_name
-        FROM overtime o JOIN drivers d ON o.driver_id = d.id
-        WHERE o.date LIKE ?
-    """
+    
+    query_overtime = "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE o.date LIKE ?"
     overtime_params = [month_str + '%']
-    if driver_id:
-        query_overtime += " AND o.driver_id = ?"
-        overtime_params.append(driver_id)
+    if driver_id: query_overtime += " AND o.driver_id = ?"; overtime_params.append(driver_id)
     execute_query(cursor, query_overtime, overtime_params)
     overtimes = cursor.fetchall()
-    query_checks = """
-        SELECT dc.*, c.name as car_name, d.name as driver_name
-        FROM daily_checks dc
-        JOIN cars c ON dc.car_id = c.id
-        JOIN drivers d ON dc.driver_id = d.id
-        WHERE dc.check_date LIKE ?
-    """
+    
+    query_checks = "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE dc.check_date LIKE ?"
     checks_params = [month_str + '%']
-    if car_id:
-        query_checks += " AND dc.car_id = ?"
-        checks_params.append(car_id)
-    if driver_id:
-        query_checks += " AND dc.driver_id = ?"
-        checks_params.append(driver_id)
+    if car_id: query_checks += " AND dc.car_id = ?"; checks_params.append(car_id)
+    if driver_id: query_checks += " AND dc.driver_id = ?"; checks_params.append(driver_id)
     execute_query(cursor, query_checks, checks_params)
     checks = cursor.fetchall()
     conn.close()
+
     wb = Workbook()
     ws = wb.active
     ws.title = f"Trips {month_str}"
@@ -2680,118 +2083,30 @@ def export_excel():
     header_font = Font(color="FFFFFF", bold=True, size=12)
     headers = ['التاريخ', 'السيارة', 'السائق', 'الجهة الطالبة', 'الوجهة', 'بداية الانطلاق', 'نوع الرحلة', 'وقت الخروج', 'وقت العودة', 'عداد البداية', 'عداد النهاية', 'المسافة (كم)', 'تكلفة/كم', 'كلفة الرحلة (ل.س)', 'ملاحظات']
     ws.append(headers)
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
+    for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
     for t in trips:
         cpk = cost_per_km_map.get(t['car_id'])
         trip_cost = ((t['distance'] or 0) * cpk) if cpk else ''
-        ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['party_name'] or t['requester'] or '',
-                   t['destination'] or '', t['start_location'] or '', t['trip_type'] or '',
-                   t['exit_time'] or '', t['return_time'] or '', t['start_km'] or '',
-                   t['end_km'] or '', t['distance'] or '',
-                   round(cpk, 0) if cpk else '', round(trip_cost, 0) if trip_cost else '',
-                   t['notes'] or ''])
+        ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['party_name'] or t['requester'] or '', t['destination'] or '', t['start_location'] or '', t['trip_type'] or '', t['exit_time'] or '', t['return_time'] or '', t['start_km'] or '', t['end_km'] or '', t['distance'] or '', round(cpk, 0) if cpk else '', round(trip_cost, 0) if trip_cost else '', t['notes'] or ''])
     for col in ws.columns:
         max_length = max(len(str(cell.value or '')) for cell in col)
         ws.column_dimensions[col[0].column_letter].width = max_length + 3
-    ws2 = wb.create_sheet(f"Fuel {month_str}")
-    ws2.sheet_view.rightToLeft = True
-    headers2 = ['التاريخ', 'السيارة', 'السائق', 'نوع الوقود', 'المصدر', 'حالة الدفع', 'اللترات', 'سعر اللتر', 'الكلفة النهائية', 'العداد', 'ملاحظات']
-    ws2.append(headers2)
-    for cell in ws2[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for f in fuels:
-        if should_count_cost(f):
-            cost_val = f['final_cost'] if f['final_cost'] else (f['total_cost'] or '')
-        else:
-            cost_val = ''
-        ws2.append([f['fuel_date'], f['car_name'], f['driver_name'] or '',
-                    f['fuel_type'] or '', f['source'] or '', f['payment_status'] or '',
-                    f['liters'] or '', f['price_per_liter'] or '', cost_val,
-                    f['km_at_fill'] or '', f['notes'] or ''])
-    for col in ws2.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws2.column_dimensions[col[0].column_letter].width = max_length + 3
+
     ws3 = wb.create_sheet(f"Maintenance {month_str}")
     ws3.sheet_view.rightToLeft = True
-    headers3 = ['التاريخ', 'السيارة', 'النوع', 'الفئة', 'العداد', 'التكلفة', 'رقم الفاتورة', 'الورشة', 'ملاحظات', 'الصيانة القادمة (كم)']
+    headers3 = ['التاريخ', 'السيارة', 'النوع', 'الفئة', 'العداد', 'التكلفة', 'العملة', 'رقم الفاتورة', 'الورشة', 'ملاحظات', 'الصيانة القادمة (كم)']
     ws3.append(headers3)
-    for cell in ws3[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
+    for cell in ws3[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
     for m in maints:
-        ws3.append([m['date'], m['car_name'], m['type'], m['category'] or '',
-                    m['km_at_service'] or '', m['cost'] or '', m['invoice_number'] or '',
-                    m['workshop'] or '', m['notes'] or '', m['next_service_km'] or ''])
+        ws3.append([m['date'], m['car_name'], m['type'], m['category'] or '', m['km_at_service'] or '', m['cost'] or '', m.get('currency', 'ل.س'), m['invoice_number'] or '', m['workshop'] or '', m['notes'] or '', m['next_service_km'] or ''])
     for col in ws3.columns:
         max_length = max(len(str(cell.value or '')) for cell in col)
         ws3.column_dimensions[col[0].column_letter].width = max_length + 3
-    ws4 = wb.create_sheet(f"Travel {month_str}")
-    ws4.sheet_view.rightToLeft = True
-    headers4 = ['التاريخ', 'السائق', 'الوصف', 'المسافة (كم)', 'مهمة سفر؟', 'وقت الذهاب', 'وقت العودة', 'ملاحظات']
-    ws4.append(headers4)
-    for cell in ws4[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for tm in travels:
-        travel_flag = 'نعم' if tm['is_travel'] == 1 else 'لا'
-        ws4.append([tm['date'], tm['driver_name'], tm['description'] or '',
-                    tm['distance_km'] or 0, travel_flag,
-                    tm['departure_time'] or '', tm['return_time'] or '', tm['notes'] or ''])
-    for col in ws4.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws4.column_dimensions[col[0].column_letter].width = max_length + 3
-    ws5 = wb.create_sheet(f"Overtime {month_str}")
-    ws5.sheet_view.rightToLeft = True
-    headers5 = ['التاريخ', 'السائق', 'ساعات صباحية', 'ساعات مسائية', 'الإجمالي', 'ملاحظات']
-    ws5.append(headers5)
-    for cell in ws5[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for o in overtimes:
-        mh = o['morning_hours'] or 0
-        eh = o['evening_hours'] or 0
-        ws5.append([o['date'], o['driver_name'], mh, eh, mh + eh, o['notes'] or ''])
-    for col in ws5.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws5.column_dimensions[col[0].column_letter].width = max_length + 3
-    ws6 = wb.create_sheet(f"Daily Checks {month_str}")
-    ws6.sheet_view.rightToLeft = True
-    headers6 = ['التاريخ', 'الوقت', 'السيارة', 'السائق', 'العداد', 'زيت المحرك', 'ماء الراديتور', 'الإطارات', 'البطارية', 'القشاطات', 'ملاحظات السائق', 'ملاحظات المسؤول', 'فيه عطل؟']
-    ws6.append(headers6)
-    for cell in ws6[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for dc in checks:
-        ws6.append([
-            dc['check_date'], dc['check_time'], dc['car_name'], dc['driver_name'],
-            dc['km_at_check'] or '',
-            '✓' if dc['oil_checked'] == 1 else '-',
-            '✓' if dc['radiator_checked'] == 1 else '-',
-            '✓' if dc['tires_checked'] == 1 else '-',
-            '✓' if dc['battery_checked'] == 1 else '-',
-            '✓' if dc['belts_checked'] == 1 else '-',
-            dc['general_notes'] or '',
-            dc['admin_notes'] or '',
-            'نعم' if dc['has_issue'] == 1 else 'لا'
-        ])
-    for col in ws6.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws6.column_dimensions[col[0].column_letter].width = max_length + 3
+
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name=f'qamh_report_{month_str}.xlsx')
-
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_report_{month_str}.xlsx')
 
 @app.route('/reports/trips/export')
 @login_required
@@ -2803,39 +2118,19 @@ def export_trips_excel():
     date_to = request.args.get('date_to') or ''
     conn = get_connection()
     cursor = conn.cursor()
-    query = """
-        SELECT t.*, c.name as car_name, d.name as driver_name,
-               rp.name as party_name
-        FROM trips t 
-        JOIN cars c ON t.car_id = c.id 
-        JOIN drivers d ON t.driver_id = d.id
-        LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id
-        WHERE 1=1
-    """
+    query = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE 1=1"
     params = []
-    if car_id:
-        query += " AND t.car_id = ?"
-        params.append(car_id)
-    if driver_id:
-        query += " AND t.driver_id = ?"
-        params.append(driver_id)
-    if requesting_party_id:
-        query += " AND t.requesting_party_id = ?"
-        params.append(requesting_party_id)
-    if date_from:
-        query += " AND t.trip_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND t.trip_date <= ?"
-        params.append(date_to)
-    query += """ ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, 
-                 COALESCE(t.exit_time, '00:00') DESC, t.id DESC"""
+    if car_id: query += " AND t.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND t.driver_id = ?"; params.append(driver_id)
+    if requesting_party_id: query += " AND t.requesting_party_id = ?"; params.append(requesting_party_id)
+    if date_from: query += " AND t.trip_date >= ?"; params.append(date_from)
+    if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
+    query += " ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC"
     execute_query(cursor, query, params)
     trips = cursor.fetchall()
     cost_per_km_map = {}
     execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
-    for row in cursor.fetchall():
-        cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
+    for row in cursor.fetchall(): cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
     conn.close()
     wb = Workbook()
     ws = wb.active
@@ -2845,412 +2140,23 @@ def export_trips_excel():
     header_font = Font(color="FFFFFF", bold=True, size=12)
     headers = ['التاريخ', 'السيارة', 'السائق', 'الجهة الطالبة', 'الوجهة', 'بداية الانطلاق', 'نوع الرحلة', 'وقت الخروج', 'وقت العودة', 'عداد البداية', 'عداد النهاية', 'المسافة (كم)', 'تكلفة/كم', 'كلفة الرحلة (ل.س)', 'ملاحظات']
     ws.append(headers)
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
+    for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
     for t in trips:
         cpk = cost_per_km_map.get(t['car_id'])
         trip_cost = ((t['distance'] or 0) * cpk) if cpk else ''
-        ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['party_name'] or t['requester'] or '',
-                   t['destination'] or '', t['start_location'] or '', t['trip_type'] or '',
-                   t['exit_time'] or '', t['return_time'] or '', t['start_km'] or '',
-                   t['end_km'] or '', t['distance'] or '',
-                   round(cpk, 0) if cpk else '', round(trip_cost, 0) if trip_cost else '',
-                   t['notes'] or ''])
+        ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['party_name'] or t['requester'] or '', t['destination'] or '', t['start_location'] or '', t['trip_type'] or '', t['exit_time'] or '', t['return_time'] or '', t['start_km'] or '', t['end_km'] or '', t['distance'] or '', round(cpk, 0) if cpk else '', round(trip_cost, 0) if trip_cost else '', t['notes'] or ''])
     for col in ws.columns:
         max_length = max(len(str(cell.value or '')) for cell in col)
         ws.column_dimensions[col[0].column_letter].width = max_length + 3
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name='trips_report.xlsx')
-
-
-@app.route('/reports/requesting_parties/export')
-@login_required
-def export_requesting_parties_excel():
-    party_id = request.args.get('party_id') or ''
-    date_from = request.args.get('date_from') or ''
-    date_to = request.args.get('date_to') or ''
-    conn = get_connection()
-    cursor = conn.cursor()
-    if party_id:
-        execute_query(cursor, "SELECT * FROM requesting_parties WHERE id=?", (party_id,))
-    else:
-        execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY name")
-    parties_list = cursor.fetchall()
-    query = """
-        SELECT t.*, c.name as car_name, d.name as driver_name,
-               rp.name as party_name
-        FROM trips t 
-        JOIN cars c ON t.car_id = c.id 
-        JOIN drivers d ON t.driver_id = d.id
-        LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id
-        WHERE 1=1
-    """
-    params = []
-    if party_id:
-        query += " AND t.requesting_party_id = ?"
-        params.append(party_id)
-    if date_from:
-        query += " AND t.trip_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND t.trip_date <= ?"
-        params.append(date_to)
-    query += """ ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, 
-                 COALESCE(t.exit_time, '00:00') DESC, t.id DESC"""
-    execute_query(cursor, query, params)
-    trips = cursor.fetchall()
-    cost_per_km_map = {}
-    execute_query(cursor, "SELECT DISTINCT car_id FROM trips")
-    for row in cursor.fetchall():
-        cost_per_km_map[row['car_id']] = get_car_estimated_cost_per_km(row['car_id'], conn)
-    conn.close()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Requesting Parties Report"
-    ws.sheet_view.rightToLeft = True
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True, size=12)
-    ws.append(['الجهة الطالبة', 'عدد الرحلات', 'مجموع المسافة (كم)', 'إجمالي الكلفة (ل.س)'])
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for p in parties_list:
-        p_trips = [t for t in trips if t.get('requesting_party_id') == p['id']]
-        p_km = sum(t['distance'] or 0 for t in p_trips)
-        p_cost = 0
-        for t in p_trips:
-            cpk = cost_per_km_map.get(t['car_id'])
-            if cpk:
-                p_cost += (t['distance'] or 0) * cpk
-        ws.append([p['name'], len(p_trips), round(p_km, 1), round(p_cost, 0)])
-    for col in ws.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws.column_dimensions[col[0].column_letter].width = max_length + 3
-    ws2 = wb.create_sheet("تفاصيل الرحلات")
-    ws2.sheet_view.rightToLeft = True
-    headers2 = ['الجهة الطالبة', 'التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)', 'كلفة الرحلة (ل.س)']
-    ws2.append(headers2)
-    for cell in ws2[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for t in trips:
-        cpk = cost_per_km_map.get(t['car_id'])
-        trip_cost = ((t['distance'] or 0) * cpk) if cpk else 0
-        ws2.append([t['party_name'] or t['requester'] or '', t['trip_date'], t['car_name'], t['driver_name'],
-                    t['destination'] or '', t['distance'] or 0, round(trip_cost, 0)])
-    for col in ws2.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws2.column_dimensions[col[0].column_letter].width = max_length + 3
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name='requesting_parties_report.xlsx')
-
-
-@app.route('/reports/daily_checks/export')
-@login_required
-def export_daily_checks_excel():
-    date_from = request.args.get('date_from') or ''
-    date_to = request.args.get('date_to') or ''
-    car_id = request.args.get('car_id') or ''
-    driver_id = request.args.get('driver_id') or ''
-    conn = get_connection()
-    cursor = conn.cursor()
-    query = """
-        SELECT dc.*, c.name as car_name, d.name as driver_name
-        FROM daily_checks dc
-        JOIN cars c ON dc.car_id = c.id
-        JOIN drivers d ON dc.driver_id = d.id
-        WHERE 1=1
-    """
-    params = []
-    if date_from:
-        query += " AND dc.check_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND dc.check_date <= ?"
-        params.append(date_to)
-    if car_id:
-        query += " AND dc.car_id = ?"
-        params.append(car_id)
-    if driver_id:
-        query += " AND dc.driver_id = ?"
-        params.append(driver_id)
-    query += " ORDER BY dc.id DESC"
-    execute_query(cursor, query, params)
-    checks = cursor.fetchall()
-    conn.close()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Daily Checks"
-    ws.sheet_view.rightToLeft = True
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True, size=12)
-    headers = ['التاريخ', 'الوقت', 'السيارة', 'السائق', 'العداد', 'زيت المحرك', 'ماء الراديتور', 'الإطارات', 'البطارية', 'القشاطات', 'ملاحظات السائق', 'ملاحظات المسؤول', 'فيه عطل؟']
-    ws.append(headers)
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for dc in checks:
-        ws.append([
-            dc['check_date'], dc['check_time'], dc['car_name'], dc['driver_name'],
-            dc['km_at_check'] or '',
-            '✓' if dc['oil_checked'] == 1 else '-',
-            '✓' if dc['radiator_checked'] == 1 else '-',
-            '✓' if dc['tires_checked'] == 1 else '-',
-            '✓' if dc['battery_checked'] == 1 else '-',
-            '✓' if dc['belts_checked'] == 1 else '-',
-            dc['general_notes'] or '',
-            dc['admin_notes'] or '',
-            'نعم' if dc['has_issue'] == 1 else 'لا'
-        ])
-    for col in ws.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws.column_dimensions[col[0].column_letter].width = max_length + 3
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name='daily_checks_report.xlsx')
-
-
-@app.route('/reports/fuel/export')
-@login_required
-def export_fuel_excel():
-    car_id = request.args.get('car_id') or ''
-    driver_id = request.args.get('driver_id') or ''
-    date_from = request.args.get('date_from') or ''
-    date_to = request.args.get('date_to') or ''
-    payment_filter = request.args.get('payment_filter') or ''
-    conn = get_connection()
-    cursor = conn.cursor()
-    query = """
-        SELECT f.*, c.name as car_name, d.name as driver_name
-        FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id
-        WHERE 1=1
-    """
-    params = []
-    if car_id:
-        query += " AND f.car_id = ?"
-        params.append(car_id)
-    if driver_id:
-        query += " AND f.driver_id = ?"
-        params.append(driver_id)
-    if date_from:
-        query += " AND f.fuel_date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND f.fuel_date <= ?"
-        params.append(date_to)
-    if payment_filter:
-        if payment_filter == 'خزان الشركة':
-            query += " AND f.source = ?"
-            params.append('خزان الشركة')
-        elif payment_filter == 'كازية':
-            query += " AND f.source = ?"
-            params.append('كازية')
-        else:
-            query += " AND f.payment_status = ?"
-            params.append(payment_filter)
-    query += " ORDER BY f.fuel_date DESC, f.km_at_fill DESC, f.id DESC"
-    execute_query(cursor, query, params)
-    fuel_records = cursor.fetchall()
-    conn.close()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Fuel Report"
-    ws.sheet_view.rightToLeft = True
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True, size=12)
-    headers = ['التاريخ', 'السيارة', 'السائق', 'نوع الوقود', 'المصدر', 'حالة الدفع', 'اللترات', 'سعر اللتر', 'الكلفة النهائية', 'العداد', 'ملاحظات']
-    ws.append(headers)
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for f in fuel_records:
-        if should_count_cost(f):
-            cost_val = f['final_cost'] if f['final_cost'] else (f['total_cost'] or '')
-        else:
-            cost_val = ''
-        ws.append([f['fuel_date'], f['car_name'], f['driver_name'] or '',
-                   f['fuel_type'] or '', f['source'] or '', f['payment_status'] or '',
-                   f['liters'] or '', f['price_per_liter'] or '', cost_val,
-                   f['km_at_fill'] or '', f['notes'] or ''])
-    for col in ws.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws.column_dimensions[col[0].column_letter].width = max_length + 3
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name='fuel_report.xlsx')
-
-
-@app.route('/reports/maintenance/export')
-@login_required
-def export_maintenance_excel():
-    car_id = request.args.get('car_id') or ''
-    date_from = request.args.get('date_from') or ''
-    date_to = request.args.get('date_to') or ''
-    mtype = request.args.get('type') or ''
-    category = request.args.get('category') or ''
-    conn = get_connection()
-    cursor = conn.cursor()
-    query = """
-        SELECT m.*, c.name as car_name
-        FROM maintenance m JOIN cars c ON m.car_id = c.id
-        WHERE 1=1
-    """
-    params = []
-    if car_id:
-        query += " AND m.car_id = ?"
-        params.append(car_id)
-    if date_from:
-        query += " AND m.date >= ?"
-        params.append(date_from)
-    if date_to:
-        query += " AND m.date <= ?"
-        params.append(date_to)
-    if mtype:
-        query += " AND m.type = ?"
-        params.append(mtype)
-    if category:
-        query += " AND m.category = ?"
-        params.append(category)
-    query += " ORDER BY m.date DESC, m.km_at_service DESC, m.id DESC"
-    execute_query(cursor, query, params)
-    records = cursor.fetchall()
-    conn.close()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Maintenance Report"
-    ws.sheet_view.rightToLeft = True
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True, size=12)
-    headers = ['التاريخ', 'السيارة', 'النوع', 'الفئة', 'العداد', 'التكلفة', 'رقم الفاتورة', 'الورشة', 'ملاحظات', 'الصيانة القادمة (كم)', 'تاريخ الصيانة القادمة']
-    ws.append(headers)
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for m in records:
-        ws.append([m['date'], m['car_name'], m['type'], m['category'] or '',
-                   m['km_at_service'] or '', m['cost'] or '', m['invoice_number'] or '',
-                   m['workshop'] or '', m['notes'] or '', m['next_service_km'] or '',
-                   m['next_service_date'] or ''])
-    for col in ws.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws.column_dimensions[col[0].column_letter].width = max_length + 3
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name='maintenance_report.xlsx')
-
-
-@app.route('/reports/drivers/export')
-@login_required
-def export_drivers_excel():
-    driver_id = request.args.get('driver_id') or ''
-    date_from = request.args.get('date_from') or ''
-    date_to = request.args.get('date_to') or ''
-    conn = get_connection()
-    cursor = conn.cursor()
-    query_travel = """
-        SELECT tm.*, d.name as driver_name
-        FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id
-        WHERE 1=1
-    """
-    travel_params = []
-    if driver_id:
-        query_travel += " AND tm.driver_id = ?"
-        travel_params.append(driver_id)
-    if date_from:
-        query_travel += " AND tm.date >= ?"
-        travel_params.append(date_from)
-    if date_to:
-        query_travel += " AND tm.date <= ?"
-        travel_params.append(date_to)
-    query_travel += " ORDER BY tm.date DESC, tm.id DESC"
-    execute_query(cursor, query_travel, travel_params)
-    travels = cursor.fetchall()
-    query_overtime = """
-        SELECT o.*, d.name as driver_name
-        FROM overtime o JOIN drivers d ON o.driver_id = d.id
-        WHERE 1=1
-    """
-    overtime_params = []
-    if driver_id:
-        query_overtime += " AND o.driver_id = ?"
-        overtime_params.append(driver_id)
-    if date_from:
-        query_overtime += " AND o.date >= ?"
-        overtime_params.append(date_from)
-    if date_to:
-        query_overtime += " AND o.date <= ?"
-        overtime_params.append(date_to)
-    query_overtime += " ORDER BY o.date DESC, o.id DESC"
-    execute_query(cursor, query_overtime, overtime_params)
-    overtimes = cursor.fetchall()
-    conn.close()
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Travel Missions"
-    ws.sheet_view.rightToLeft = True
-    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
-    header_font = Font(color="FFFFFF", bold=True, size=12)
-    headers = ['التاريخ', 'السائق', 'الوصف', 'المسافة (كم)', 'مهمة سفر؟', 'وقت الذهاب', 'وقت العودة', 'ملاحظات']
-    ws.append(headers)
-    for cell in ws[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for tm in travels:
-        travel_flag = 'نعم' if tm['is_travel'] == 1 else 'لا'
-        ws.append([tm['date'], tm['driver_name'], tm['description'] or '',
-                   tm['distance_km'] or 0, travel_flag,
-                   tm['departure_time'] or '', tm['return_time'] or '', tm['notes'] or ''])
-    for col in ws.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws.column_dimensions[col[0].column_letter].width = max_length + 3
-    ws2 = wb.create_sheet("Overtime")
-    ws2.sheet_view.rightToLeft = True
-    headers2 = ['التاريخ', 'السائق', 'ساعات صباحية', 'ساعات مسائية', 'الإجمالي', 'ملاحظات']
-    ws2.append(headers2)
-    for cell in ws2[1]:
-        cell.fill = header_fill
-        cell.font = header_font
-        cell.alignment = Alignment(horizontal='center', vertical='center')
-    for o in overtimes:
-        mh = o['morning_hours'] or 0
-        eh = o['evening_hours'] or 0
-        ws2.append([o['date'], o['driver_name'], mh, eh, mh + eh, o['notes'] or ''])
-    for col in ws2.columns:
-        max_length = max(len(str(cell.value or '')) for cell in col)
-        ws2.column_dimensions[col[0].column_letter].width = max_length + 3
-    output = io.BytesIO()
-    wb.save(output)
-    output.seek(0)
-    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True, download_name='drivers_report.xlsx')
-
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='trips_report.xlsx')
 
 # ============== Driver App API ==============
-
 @app.route('/driver')
 def driver_app():
     return render_template('driver_app.html')
-
 
 @app.route('/api/driver/init', methods=['GET'])
 def api_driver_init():
@@ -3263,31 +2169,17 @@ def api_driver_init():
         cars_list = [dict(row) for row in cursor.fetchall()]
         execute_query(cursor, "SELECT id, name FROM requesting_parties WHERE active=1 ORDER BY name")
         parties_list = [dict(row) for row in cursor.fetchall()]
-        # 🆕 السائقون والسيارات المشغولون
         busy_driver_ids = list(get_busy_driver_ids(conn))
         busy_car_ids = list(get_busy_car_ids(conn))
         conn.close()
-        # 🆕 التنبيهات الطارئة (صيانة متأخرة)
         alerts = get_maintenance_alerts()
         critical_alerts = [a for a in alerts if a['status'] == 'red']
-        return jsonify({
-            'success': True,
-            'drivers': drivers_list,
-            'cars': cars_list,
-            'parties': parties_list,
-            'busy_driver_ids': busy_driver_ids,
-            'busy_car_ids': busy_car_ids,
-            'alerts': critical_alerts
-        })
+        return jsonify({'success': True, 'drivers': drivers_list, 'cars': cars_list, 'parties': parties_list, 'busy_driver_ids': busy_driver_ids, 'busy_car_ids': busy_car_ids, 'alerts': critical_alerts})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-# 🆕 ============== API التنبيهات الطارئة ==============
-
 @app.route('/api/driver/alerts', methods=['GET'])
 def api_driver_alerts():
-    """ترجع التنبيهات الحرجة لكل السائقين"""
     try:
         alerts = get_maintenance_alerts()
         critical_alerts = [a for a in alerts if a['status'] == 'red']
@@ -3295,50 +2187,20 @@ def api_driver_alerts():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
-# 🆕 ============== API الفحص اليومي ==============
-
 @app.route('/api/driver/last_check/<int:car_id>', methods=['GET'])
 def api_driver_last_check(car_id):
-    """
-    ترجع آخر فحص للسيارة (خلال 3 ساعات).
-    إذا ما في فحص حديث، ترجع needs_check=True.
-    """
     try:
         conn = get_connection()
         last_check = get_last_daily_check(car_id, conn)
         conn.close()
         if last_check:
-            return jsonify({
-                'success': True,
-                'needs_check': False,
-                'last_check': {
-                    'id': last_check['id'],
-                    'check_date': last_check['check_date'],
-                    'check_time': last_check['check_time'],
-                    'driver_name': last_check['driver_name'],
-                    'general_notes': last_check['general_notes'] or '',
-                    'has_issue': last_check['has_issue'],
-                    'oil_image': last_check.get('oil_image'),
-                    'radiator_image': last_check.get('radiator_image'),
-                    'tires_image': last_check.get('tires_image'),
-                    'battery_image': last_check.get('battery_image'),
-                    'belts_image': last_check.get('belts_image'),
-                    'oil_notes': last_check.get('oil_notes') or '',
-                    'radiator_notes': last_check.get('radiator_notes') or '',
-                    'tires_notes': last_check.get('tires_notes') or '',
-                    'battery_notes': last_check.get('battery_notes') or '',
-                    'belts_notes': last_check.get('belts_notes') or '',
-                }
-            })
+            return jsonify({'success': True, 'needs_check': False, 'last_check': {'id': last_check['id'], 'check_date': last_check['check_date'], 'check_time': last_check['check_time'], 'driver_name': last_check['driver_name'], 'general_notes': last_check['general_notes'] or '', 'has_issue': last_check['has_issue'], 'oil_image': last_check.get('oil_image'), 'radiator_image': last_check.get('radiator_image'), 'tires_image': last_check.get('tires_image'), 'battery_image': last_check.get('battery_image'), 'belts_image': last_check.get('belts_image'), 'oil_notes': last_check.get('oil_notes') or '', 'radiator_notes': last_check.get('radiator_notes') or '', 'tires_notes': last_check.get('tires_notes') or '', 'battery_notes': last_check.get('battery_notes') or '', 'belts_notes': last_check.get('belts_notes') or ''}})
         return jsonify({'success': True, 'needs_check': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/driver/daily_check', methods=['POST'])
 def api_driver_daily_check():
-    """حفظ الفحص اليومي من تطبيق السائق - مع رفع الصور لـ Supabase"""
     try:
         data = request.get_json()
         car_id = data.get('car_id')
@@ -3346,137 +2208,70 @@ def api_driver_daily_check():
         km_at_check = data.get('km_at_check') or None
         general_notes = data.get('general_notes', '')
         has_issue = 1 if data.get('has_issue') else 0
-        
-        if not car_id or not driver_id:
-            return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
-        
-        # 🆕 رفع الصور إلى Supabase Storage
+        if not car_id or not driver_id: return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
         images = {}
         for field in ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image']:
             img_b64 = data.get(field, '')
             if img_b64 and len(img_b64) > 100:
                 try:
-                    if ',' in img_b64:
-                        img_b64 = img_b64.split(',', 1)[1]
+                    if ',' in img_b64: img_b64 = img_b64.split(',', 1)[1]
                     img_data = base64.b64decode(img_b64)
                     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                     filename = f"check_{field}_{car_id}_{driver_id}_{timestamp}.jpg"
-                    
-                    # محاولة الرفع لـ Supabase أولاً
                     uploaded = upload_image_to_supabase(filename, img_data)
-                    
-                    if uploaded:
-                        images[field] = uploaded
+                    if uploaded: images[field] = uploaded
                     else:
-                        # Fallback - حفظ محلي
                         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                        with open(filepath, 'wb') as f:
-                            f.write(img_data)
+                        with open(filepath, 'wb') as f: f.write(img_data)
                         images[field] = filename
-                        print(f"⚠ تم حفظ {field} محلياً (Supabase غير متاح)")
-                except Exception as e:
-                    print(f"⚠ خطأ في حفظ {field}: {e}")
-                    images[field] = None
-            else:
-                images[field] = None
-        
+                except: images[field] = None
+            else: images[field] = None
         now = datetime.now() + timedelta(hours=3)
-        check_date = now.strftime('%Y-%m-%d')
-        check_time = now.strftime('%H:%M:%S')
-        created_at = now.strftime('%Y-%m-%d %H:%M:%S')
-        
+        check_date = now.strftime('%Y-%m-%d'); check_time = now.strftime('%H:%M:%S'); created_at = now.strftime('%Y-%m-%d %H:%M:%S')
         conn = get_connection()
         cursor = conn.cursor()
         execute_query(cursor, """
             INSERT INTO daily_checks 
-            (check_date, check_time, car_id, driver_id, km_at_check,
-             oil_checked, radiator_checked, tires_checked, battery_checked, belts_checked,
-             oil_notes, radiator_notes, tires_notes, battery_notes, belts_notes,
-             oil_image, radiator_image, tires_image, battery_image, belts_image,
-             general_notes, has_issue, created_at)
+            (check_date, check_time, car_id, driver_id, km_at_check, oil_checked, radiator_checked, tires_checked, battery_checked, belts_checked, oil_notes, radiator_notes, tires_notes, battery_notes, belts_notes, oil_image, radiator_image, tires_image, battery_image, belts_image, general_notes, has_issue, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            check_date, check_time, car_id, driver_id, km_at_check,
-            1 if data.get('oil_checked') else 0,
-            1 if data.get('radiator_checked') else 0,
-            1 if data.get('tires_checked') else 0,
-            1 if data.get('battery_checked') else 0,
-            1 if data.get('belts_checked') else 0,
-            data.get('oil_notes', ''),
-            data.get('radiator_notes', ''),
-            data.get('tires_notes', ''),
-            data.get('battery_notes', ''),
-            data.get('belts_notes', ''),
-            images.get('oil_image'), images.get('radiator_image'),
-            images.get('tires_image'), images.get('battery_image'),
-            images.get('belts_image'),
-            general_notes, has_issue, created_at
-        ))
+        """, (check_date, check_time, car_id, driver_id, km_at_check, 1 if data.get('oil_checked') else 0, 1 if data.get('radiator_checked') else 0, 1 if data.get('tires_checked') else 0, 1 if data.get('battery_checked') else 0, 1 if data.get('belts_checked') else 0, data.get('oil_notes', ''), data.get('radiator_notes', ''), data.get('tires_notes', ''), data.get('battery_notes', ''), data.get('belts_notes', ''), images.get('oil_image'), images.get('radiator_image'), images.get('tires_image'), images.get('battery_image'), images.get('belts_image'), general_notes, has_issue, created_at))
         conn.commit()
         execute_query(cursor, "SELECT MAX(id) as max_id FROM daily_checks")
         row = cursor.fetchone()
         check_id = row['max_id'] if row else None
         conn.close()
-        
         return jsonify({'success': True, 'check_id': check_id, 'message': 'تم حفظ الفحص اليومي'})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/driver/start_trip', methods=['POST'])
 def api_driver_start_trip():
-    """بدء رحلة جديدة - مع رفع صورة البداية لـ Supabase"""
     try:
         data = request.get_json()
-        driver_id = data.get('driver_id')
-        car_id = data.get('car_id')
-        destination = data.get('destination', '').strip()
-        start_km = data.get('start_km')
-        start_image_b64 = data.get('start_image', '')
-        requesting_party_id = data.get('requesting_party_id') or None
-        
-        if not driver_id or not car_id:
-            return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
-        if not destination:
-            return jsonify({'success': False, 'error': 'الرجاء إدخال الوجهة'}), 400
-        if start_km is None or str(start_km).strip() == '':
-            return jsonify({'success': False, 'error': 'الرجاء إدخال قراءة العداد'}), 400
+        driver_id = data.get('driver_id'); car_id = data.get('car_id'); destination = data.get('destination', '').strip()
+        start_km = data.get('start_km'); start_image_b64 = data.get('start_image', ''); requesting_party_id = data.get('requesting_party_id') or None
+        if not driver_id or not car_id: return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
+        if not destination: return jsonify({'success': False, 'error': 'الرجاء إدخال الوجهة'}), 400
+        if start_km is None or str(start_km).strip() == '': return jsonify({'success': False, 'error': 'الرجاء إدخال قراءة العداد'}), 400
         try:
             start_km = float(start_km)
-            if start_km <= 0:
-                return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
-        except (ValueError, TypeError):
-            return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
-        
-        # 🆕 رفع صورة البداية لـ Supabase
+            if start_km <= 0: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
+        except: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
         start_image_filename = None
         if start_image_b64 and len(start_image_b64) > 100:
             try:
-                if ',' in start_image_b64:
-                    start_image_b64 = start_image_b64.split(',', 1)[1]
+                if ',' in start_image_b64: start_image_b64 = start_image_b64.split(',', 1)[1]
                 img_data = base64.b64decode(start_image_b64)
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 start_image_filename = f"trip_start_{driver_id}_{car_id}_{timestamp}.jpg"
-                
-                # محاولة الرفع لـ Supabase
                 uploaded = upload_image_to_supabase(start_image_filename, img_data)
-                
-                if uploaded:
-                    start_image_filename = uploaded
+                if uploaded: start_image_filename = uploaded
                 else:
-                    # Fallback - حفظ محلي
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], start_image_filename)
-                    with open(filepath, 'wb') as f:
-                        f.write(img_data)
-                    print(f"⚠ تم حفظ صورة البداية محلياً")
-            except Exception as e:
-                print(f"⚠ خطأ في حفظ صورة البداية: {e}")
-                start_image_filename = None
-        
+                    with open(filepath, 'wb') as f: f.write(img_data)
+            except: start_image_filename = None
         now = datetime.now() + timedelta(hours=3)
-        trip_date = now.strftime('%Y-%m-%d')
-        start_time = now.strftime('%H:%M:%S')
-        
+        trip_date = now.strftime('%Y-%m-%d'); start_time = now.strftime('%H:%M:%S')
         requester_name = ''
         conn = get_connection()
         cursor = conn.cursor()
@@ -3484,49 +2279,30 @@ def api_driver_start_trip():
             execute_query(cursor, "SELECT name FROM requesting_parties WHERE id=?", (requesting_party_id,))
             party_row = cursor.fetchone()
             requester_name = party_row['name'] if party_row else ''
-        
         execute_query(cursor, """
-            INSERT INTO trips 
-            (trip_date, car_id, driver_id, destination, start_km, start_time, 
-             start_image, trip_source, driver_confirmed, admin_seen, notes,
-             requesting_party_id, requester)
+            INSERT INTO trips (trip_date, car_id, driver_id, destination, start_km, start_time, start_image, trip_source, driver_confirmed, admin_seen, notes, requesting_party_id, requester)
             VALUES (?, ?, ?, ?, ?, ?, ?, 'driver_app', 1, 0, ?, ?, ?)
-        """, (trip_date, car_id, driver_id, destination, start_km, 
-              start_time, start_image_filename, 'رحلة مسجلة من تطبيق السائق',
-              requesting_party_id, requester_name))
+        """, (trip_date, car_id, driver_id, destination, start_km, start_time, start_image_filename, 'رحلة مسجلة من تطبيق السائق', requesting_party_id, requester_name))
         conn.commit()
-        
         execute_query(cursor, "SELECT MAX(id) as max_id FROM trips")
         row = cursor.fetchone()
         trip_id = row['max_id'] if row else None
         conn.close()
-        
         return jsonify({'success': True, 'trip_id': trip_id, 'message': 'تم بدء الرحلة بنجاح', 'start_time': start_time})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/driver/end_trip', methods=['POST'])
 def api_driver_end_trip():
-    """إنهاء الرحلة - مع رفع صورة النهاية لـ Supabase"""
     try:
         data = request.get_json()
-        trip_id = data.get('trip_id')
-        end_km = data.get('end_km')
-        end_image_b64 = data.get('end_image', '')
-        notes = data.get('notes', '')
-        
-        if not trip_id:
-            return jsonify({'success': False, 'error': 'رقم الرحلة مفقود'}), 400
-        if end_km is None or str(end_km).strip() == '':
-            return jsonify({'success': False, 'error': 'الرجاء إدخال قراءة العداد النهائية'}), 400
+        trip_id = data.get('trip_id'); end_km = data.get('end_km'); end_image_b64 = data.get('end_image', ''); notes = data.get('notes', '')
+        if not trip_id: return jsonify({'success': False, 'error': 'رقم الرحلة مفقود'}), 400
+        if end_km is None or str(end_km).strip() == '': return jsonify({'success': False, 'error': 'الرجاء إدخال قراءة العداد النهائية'}), 400
         try:
             end_km = float(end_km)
-            if end_km <= 0:
-                return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
-        except (ValueError, TypeError):
-            return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
-        
+            if end_km <= 0: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
+        except: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
         conn = get_connection()
         cursor = conn.cursor()
         execute_query(cursor, "SELECT start_km FROM trips WHERE id=?", (trip_id,))
@@ -3534,126 +2310,187 @@ def api_driver_end_trip():
         if not trip:
             conn.close()
             return jsonify({'success': False, 'error': 'الرحلة غير موجودة'}), 404
-        
         start_km = trip['start_km']
         if start_km is not None:
             try:
                 if end_km <= float(start_km):
                     conn.close()
                     return jsonify({'success': False, 'error': f'قراءة العداد النهائية ({end_km}) يجب أن تكون أكبر من قراءة البداية ({start_km})'}), 400
-            except (ValueError, TypeError):
-                pass
-        
+            except: pass
         distance = None
         if start_km is not None and end_km is not None:
             try:
                 distance = float(end_km) - float(start_km)
-                if distance < 0:
-                    distance = None
-            except (ValueError, TypeError):
-                distance = None
-        
-        # 🆕 رفع صورة النهاية لـ Supabase
+                if distance < 0: distance = None
+            except: distance = None
         end_image_filename = None
         if end_image_b64 and len(end_image_b64) > 100:
             try:
-                if ',' in end_image_b64:
-                    end_image_b64 = end_image_b64.split(',', 1)[1]
+                if ',' in end_image_b64: end_image_b64 = end_image_b64.split(',', 1)[1]
                 img_data = base64.b64decode(end_image_b64)
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 end_image_filename = f"trip_end_{trip_id}_{timestamp}.jpg"
-                
-                # محاولة الرفع لـ Supabase
                 uploaded = upload_image_to_supabase(end_image_filename, img_data)
-                
-                if uploaded:
-                    end_image_filename = uploaded
+                if uploaded: end_image_filename = uploaded
                 else:
-                    # Fallback - حفظ محلي
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], end_image_filename)
-                    with open(filepath, 'wb') as f:
-                        f.write(img_data)
-                    print(f"⚠ تم حفظ صورة النهاية محلياً")
-            except Exception as e:
-                print(f"⚠ خطأ في حفظ صورة النهاية: {e}")
-                end_image_filename = None
-        
+                    with open(filepath, 'wb') as f: f.write(img_data)
+            except: end_image_filename = None
         now = datetime.now() + timedelta(hours=3)
         end_time = now.strftime('%H:%M:%S')
-        
-        execute_query(cursor, """
-            UPDATE trips SET end_km=?, end_time=?, end_image=?, distance=?, notes=? WHERE id=?
-        """, (end_km, end_time, end_image_filename, distance, notes, trip_id))
-        
+        execute_query(cursor, "UPDATE trips SET end_km=?, end_time=?, end_image=?, distance=?, notes=? WHERE id=?", (end_km, end_time, end_image_filename, distance, notes, trip_id))
         conn.commit()
         conn.close()
-        
         return jsonify({'success': True, 'message': 'تم إنهاء الرحلة بنجاح', 'end_time': end_time, 'distance': distance})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/driver/active_trip/<int:driver_id>', methods=['GET'])
 def api_driver_active_trip(driver_id):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        execute_query(cursor, """
-            SELECT t.*, c.name as car_name
-            FROM trips t JOIN cars c ON t.car_id = c.id
-            WHERE t.driver_id = ? AND t.trip_source = 'driver_app' AND t.end_km IS NULL
-            ORDER BY t.id DESC LIMIT 1
-        """, (driver_id,))
+        execute_query(cursor, "SELECT t.*, c.name as car_name FROM trips t JOIN cars c ON t.car_id = c.id WHERE t.driver_id = ? AND t.trip_source = 'driver_app' AND t.end_km IS NULL ORDER BY t.id DESC LIMIT 1", (driver_id,))
         trip = cursor.fetchone()
         conn.close()
-        if trip:
-            return jsonify({'success': True, 'has_active': True, 'trip': dict(trip)})
+        if trip: return jsonify({'success': True, 'has_active': True, 'trip': dict(trip)})
         return jsonify({'success': True, 'has_active': False})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
-
 
 @app.route('/api/driver/recent_trips/<int:driver_id>', methods=['GET'])
 def api_driver_recent_trips(driver_id):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        execute_query(cursor, """
-            SELECT t.id, t.trip_date, t.destination, t.start_km, t.end_km, 
-                   t.distance, t.start_time, t.end_time, c.name as car_name
-            FROM trips t JOIN cars c ON t.car_id = c.id
-            WHERE t.driver_id = ?
-            ORDER BY t.id DESC LIMIT 5
-        """, (driver_id,))
+        execute_query(cursor, "SELECT t.id, t.trip_date, t.destination, t.start_km, t.end_km, t.distance, t.start_time, t.end_time, c.name as car_name FROM trips t JOIN cars c ON t.car_id = c.id WHERE t.driver_id = ? ORDER BY t.id DESC LIMIT 5", (driver_id,))
         trips = [dict(row) for row in cursor.fetchall()]
         conn.close()
         return jsonify({'success': True, 'trips': trips})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
-
 @app.route('/api/driver/pending_count/<int:driver_id>', methods=['GET'])
 def api_driver_pending_count(driver_id):
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        execute_query(cursor, """
-            SELECT COUNT(*) as cnt FROM trips
-            WHERE driver_id = ? AND trip_source = 'driver_app' AND end_km IS NULL
-        """, (driver_id,))
+        execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE driver_id = ? AND trip_source = 'driver_app' AND end_km IS NULL", (driver_id,))
         count = cursor.fetchone()['cnt']
         conn.close()
         return jsonify({'success': True, 'count': count})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# ============== Telegram Webhook & Pending Fuel ==============
+@app.route('/telegram_webhook', methods=['POST'])
+def telegram_webhook():
+    data = request.get_json()
+    if 'message' in data:
+        chat_id = data['message']['chat']['id']
+        text = data['message'].get('text', '')
+        photos = data['message'].get('photo', [])
+        
+        if photos:
+            file_id = photos[-1]['file_id']
+            file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}"
+            try:
+                file_info = requests.get(file_info_url).json()
+                file_path = file_info['result']['file_path']
+                img_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
+                img_data = requests.get(img_url).content
+                
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"tg_fuel_{chat_id}_{timestamp}.jpg"
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                with open(filepath, 'wb') as f: f.write(img_data)
+                
+                img_b64 = base64.b64encode(img_data).decode('utf-8')
+                extracted = extract_data_from_images(img_b64, None)
+                
+                send_telegram_message(chat_id, f"✅ تم استلام الصورة. العداد المقروء: {extracted['km']} كم. يرجى كتابة: [اسم السيارة] [اللترات] [الكلفة]")
+            except Exception as e:
+                send_telegram_message(chat_id, "❌ خطأ في معالجة الصورة.")
+                
+        elif text:
+            try:
+                parts = text.split()
+                if len(parts) >= 3:
+                    car_name = parts[0]
+                    liters = float(parts[1])
+                    cost = float(parts[2])
+                    
+                    conn = get_connection()
+                    cursor = conn.cursor()
+                    execute_query(cursor, "SELECT id FROM cars WHERE name LIKE ?", (f"%{car_name}%",))
+                    car_row = cursor.fetchone()
+                    
+                    if car_row:
+                        now = datetime.now() + timedelta(hours=3)
+                        execute_query(cursor, """
+                            INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, total_cost, status, created_at, notes)
+                            VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
+                        """, (1, car_row['id'], now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), liters, cost, now.strftime('%Y-%m-%d %H:%M:%S'), f"من تلغرام: {text}"))
+                        conn.commit()
+                        conn.close()
+                        send_telegram_message(chat_id, "✅ تم حفظ طلب التعبئة بنجاح، بانتظار موافقة الإدارة.")
+                    else:
+                        send_telegram_message(chat_id, "❌ لم يتم العثور على السيارة. تأكد من الاسم.")
+                        conn.close()
+                else:
+                    send_telegram_message(chat_id, "❌ صيغة غير صحيحة. أرسل: [اسم السيارة] [اللترات] [الكلفة]")
+            except Exception as e:
+                send_telegram_message(chat_id, f"❌ خطأ: {str(e)}")
+    return jsonify({'status': 'ok'})
+
+@app.route('/admin/pending_fuel')
+@login_required
+def admin_pending_fuel():
+    conn = get_connection()
+    cursor = conn.cursor()
+    execute_query(cursor, """
+        SELECT pf.*, d.name as driver_name, c.name as car_name
+        FROM pending_fuel pf JOIN drivers d ON pf.driver_id = d.id JOIN cars c ON pf.car_id = c.id
+        WHERE pf.status = 'pending' ORDER BY pf.id DESC
+    """)
+    pending_fuels = cursor.fetchall()
+    conn.close()
+    return render_template('admin_pending_fuel.html', pending_fuels=pending_fuels)
+
+@app.route('/admin/pending_fuel/approve/<int:req_id>', methods=['POST'])
+@admin_required
+def approve_pending_fuel(req_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    execute_query(cursor, "SELECT * FROM pending_fuel WHERE id=?", (req_id,))
+    req = cursor.fetchone()
+    if req:
+        execute_query(cursor, """
+            INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, km_at_fill, notes)
+            VALUES (?, ?, ?, ?, 'كازية', 'مدفوعة من قسم الحركة', ?, ?, ?, ?, ?)
+        """, (req['fuel_date'], req['car_id'], req['driver_id'], 'بنزين', request.form.get('liters'), request.form.get('price_per_liter'), request.form.get('total_cost'), request.form.get('km_at_fill'), 'تمت الإضافة عبر بوت التلغرام - ' + (req['notes'] or '')))
+        execute_query(cursor, "UPDATE pending_fuel SET status='approved' WHERE id=?", (req_id,))
+        conn.commit()
+        flash('تمت الموافقة وإدخال التعبئة في النظام بنجاح', 'success')
+    else: flash('الطلب غير موجود', 'error')
+    conn.close()
+    return redirect(url_for('admin_pending_fuel'))
+
+@app.route('/admin/pending_fuel/reject/<int:req_id>')
+@admin_required
+def reject_pending_fuel(req_id):
+    conn = get_connection()
+    cursor = conn.cursor()
+    execute_query(cursor, "UPDATE pending_fuel SET status='rejected' WHERE id=?", (req_id,))
+    conn.commit()
+    conn.close()
+    flash('تم رفض الطلب', 'success')
+    return redirect(url_for('admin_pending_fuel'))
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     print("=" * 60)
     print(f"  قاعدة البيانات: {'PostgreSQL (Supabase)' if is_postgres() else 'SQLite (محلي)'}")
-    print(f"  Supabase URL: {'مضبوط ✓' if SUPABASE_URL else 'غير مضبوط ✗'}")
-    print(f"  Supabase Key: {'مضبوط ✓' if SUPABASE_SECRET_KEY else 'غير مضبوط ✗'}")
     print(f"  Driver App:  http://localhost:{port}/driver")
     print(f"  Dashboard:   http://localhost:{port}/")
     print("=" * 60)
