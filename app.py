@@ -12,7 +12,7 @@ import io
 from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, PatternFill
 import requests
-import google.generativeai as genai
+from google import genai
 
 # ============== اتصال قاعدة البيانات ==============
 try:
@@ -45,9 +45,6 @@ if not os.path.exists(UPLOAD_FOLDER):
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ضع_توكن_البوت_هنا')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'ضع_مفتاح_جيميني_هنا')
 
-if GEMINI_API_KEY and GEMINI_API_KEY != 'ضع_مفتاح_جيميني_هنا':
-    genai.configure(api_key=GEMINI_API_KEY)
-
 # ============== Supabase Storage ==============
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_SECRET_KEY = os.environ.get('SUPABASE_SECRET_KEY', '')
@@ -66,7 +63,6 @@ def upload_image_to_supabase(filename, img_data):
         }
         response = requests.post(url, headers=headers, data=img_data, timeout=30)
         if response.status_code in (200, 201):
-            print(f"✓ تم رفع الصورة إلى Supabase: {filename}")
             return filename
         else:
             print(f"⚠ خطأ في رفع الصورة: {response.status_code} - {response.text}")
@@ -84,7 +80,6 @@ def delete_image_from_supabase(filename):
         response = requests.delete(url, headers=headers, timeout=30)
         return response.status_code in (200, 204)
     except Exception as e:
-        print(f"⚠ خطأ في حذف الصورة: {e}")
         return False
 
 # ============== دوال مساعدة ==============
@@ -495,7 +490,6 @@ def ensure_maintenance_currency():
                 cursor.execute("ALTER TABLE maintenance ADD COLUMN currency TEXT DEFAULT 'ل.س'")
         conn.commit()
         conn.close()
-        print("✓ عمود currency في جدول maintenance جاهز")
         return True
     except Exception as e:
         print(f"⚠ خطأ في ensure_maintenance_currency: {e}")
@@ -608,7 +602,6 @@ def ensure_all_tables():
         print(f"⚠ خطأ في ensure_all_tables: {e}")
         return False
 
-# استدعاء الدوال لضمان سلامة قاعدة البيانات
 ensure_all_tables()
 ensure_daily_checks_table()
 ensure_trips_columns()
@@ -629,7 +622,7 @@ def extract_data_from_images(car_img_b64, station_img_b64):
     if not GEMINI_API_KEY or GEMINI_API_KEY == 'ضع_مفتاح_جيميني_هنا':
         return {'km': None, 'liters': None, 'error': 'مفتاح API غير مضبوط'}
     try:
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        client = genai.Client(api_key=GEMINI_API_KEY)
         parts = ["أنت مساعد لقراءة عدادات السيارات وفواتير الوقود. استخرج الأرقام المطلوبة بدقة."]
         if car_img_b64:
             data = car_img_b64.split(',')[1] if ',' in car_img_b64 else car_img_b64
@@ -640,14 +633,19 @@ def extract_data_from_images(car_img_b64, station_img_b64):
             parts.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
             parts.append("هذه صورة عداد الكازية. استخرج عدد اللترات.")
         parts.append("أرجع النتيجة بصيغة JSON فقط: {\"km\": 12345, \"liters\": 40.5}")
-        response = model.generate_content(parts)
+        
+        response = client.models.generate_content(
+            model='gemini-1.5-flash',
+            contents=parts
+        )
+        
         text = response.text.replace('```json', '').replace('```', '').strip()
         data = json.loads(text)
         return {'km': data.get('km'), 'liters': data.get('liters'), 'error': None}
     except Exception as e:
         print(f"⚠ خطأ في OCR: {e}")
         return {'km': None, 'liters': None, 'error': str(e)}
-        # ============== Context Processor ==============
+# ============== Context Processor ==============
 @app.context_processor
 def inject_permissions():
     pending_fuel_count = 0
@@ -1547,7 +1545,7 @@ def uploaded_file(filename):
         except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-    # ============== التقارير الشهرية ==============
+# ============== التقارير الشهرية ==============
 @app.route('/reports')
 @login_required
 def reports():
@@ -2152,7 +2150,6 @@ def export_trips_excel():
     wb.save(output)
     output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='trips_report.xlsx')
-
 # ============== Driver App API ==============
 @app.route('/driver')
 def driver_app():
