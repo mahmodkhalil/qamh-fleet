@@ -1,12 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, send_from_directory, jsonify
 from werkzeug.utils import secure_filename
 from functools import wraps
-import sqlite3
-import json
-import sys
-import subprocess
-import os
-import base64
+import sqlite3, json, sys, subprocess, os, base64
 from datetime import datetime, timedelta
 import io
 from openpyxl import Workbook
@@ -40,7 +35,6 @@ if not os.path.exists(UPLOAD_FOLDER):
 
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ضع_توكن_البوت_هنا')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'ضع_مفتاح_جيميني_هنا')
-
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_SECRET_KEY = os.environ.get('SUPABASE_SECRET_KEY', '')
 SUPABASE_BUCKET = 'qamh-images'
@@ -606,6 +600,7 @@ def daily_check_delete(check_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM daily_checks WHERE id=?", (check_id,)); conn.commit(); conn.close()
     return redirect(url_for('daily_checks_list'))
+
 @app.route('/drivers')
 @login_required
 def drivers():
@@ -613,9 +608,8 @@ def drivers():
     execute_query(cursor, "SELECT * FROM drivers ORDER BY id"); drivers_list = cursor.fetchall()
     execute_query(cursor, "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id ORDER BY tm.date DESC, tm.id DESC"); all_missions = cursor.fetchall()
     execute_query(cursor, "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id ORDER BY o.date DESC, o.id DESC"); all_overtime = cursor.fetchall()
-    missions_by_driver = {}
+    missions_by_driver = {}; overtime_by_driver = {}
     for m in all_missions: missions_by_driver.setdefault(m['driver_id'], []).append(dict(m))
-    overtime_by_driver = {}
     for o in all_overtime: overtime_by_driver.setdefault(o['driver_id'], []).append(dict(o))
     execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); active_drivers = cursor.fetchall(); conn.close()
     return render_template('drivers.html', drivers=drivers_list, active_drivers=active_drivers, missions_by_driver=missions_by_driver, overtime_by_driver=overtime_by_driver)
@@ -628,24 +622,12 @@ def add_driver():
     execute_query(cursor, "INSERT INTO drivers (name, phone, notes) VALUES (?, ?, ?)", (name, phone, notes))
     conn.commit(); conn.close(); return redirect(url_for('drivers'))
 
-@app.route('/drivers/edit/<int:driver_id>', methods=['GET', 'POST'])
-@admin_required
-def edit_driver(driver_id):
-    conn = get_connection(); cursor = conn.cursor()
-    if request.method == 'POST':
-        name = request.form['name']; phone = request.form.get('phone', ''); notes = request.form.get('notes', '')
-        execute_query(cursor, "UPDATE drivers SET name=?, phone=?, notes=? WHERE id=?", (name, phone, notes, driver_id))
-        conn.commit(); conn.close(); return redirect(url_for('drivers'))
-    execute_query(cursor, "SELECT * FROM drivers WHERE id=?", (driver_id,)); driver = cursor.fetchone(); conn.close()
-    return render_template('drivers.html', drivers=[], edit_driver=driver)
-
 @app.route('/drivers/delete/<int:driver_id>')
 @admin_required
 def delete_driver(driver_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM drivers WHERE id=?", (driver_id,)); conn.commit(); conn.close()
     return redirect(url_for('drivers'))
-
 @app.route('/travel_missions')
 @login_required
 def travel_missions():
