@@ -1025,7 +1025,7 @@ def reports_fuel():
     summary = {'total_records': total_records, 'total_liters': total_liters, 'total_cost': total_cost, 'avg_price': avg_price}
     return render_template('reports_fuel.html', cars=cars_list, drivers=drivers_list, fuel_records=fuel_records, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, payment_filter=payment_filter, has_filter=bool(car_id or driver_id or date_from or date_to or payment_filter))
 
-# ============== تصدير الإكسيل (مع أوراق منفصلة لكل سيارة) ==============
+# ============== تصدير الإكسيل (تم التعديل هنا فقط) ==============
 @app.route('/reports/export')
 @login_required
 def export_excel():
