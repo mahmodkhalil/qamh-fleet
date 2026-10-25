@@ -5,19 +5,13 @@
     <h2>📊 التقارير الشهرية</h2>
     <form method="GET" action="/reports" style="margin-bottom:25px; padding:20px; background:#f7fafc; border-radius:8px;">
         <div class="form-row-3">
-            <div class="form-group"><label>الشهر</label>
-                <select name="month">{% for m in range(1,13) %}<option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
-            </div>
-            <div class="form-group"><label>السنة</label>
-                <select name="year">{% for y in years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
-            </div>
-            <div class="form-group"><label>&nbsp;</label><button type="submit" class="btn btn-primary" style="width:100%;">🔍 عرض التقرير</button></div>
+            <div class="form-group"><label>الشهر</label><select name="month">{% for m in range(1,13) %}<option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
+            <div class="form-group"><label>السنة</label><select name="year">{% for y in years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></div>
+            <div class="form-group"><label>&nbsp;</label><button type="submit" class="btn btn-primary" style="width:100%;">🔍 عرض</button></div>
         </div>
-        <!-- رابط التصدير الشامل الجديد -->
-        <a href="{{ url_for('export_excel', month=selected_month, year=selected_year, car_id=selected_car or '', driver_id=selected_driver or '', requesting_party_id=selected_party or '', report_type=report_type, payment_filter=payment_filter) }}" class="btn btn-success">📥 تصدير التقرير الشامل إلى Excel</a>
+        <a href="/reports/export?month={{ selected_month }}&year={{ selected_year }}" class="btn btn-success">📥 تصدير Excel</a>
     </form>
 </div>
-
 {% if report_data %}
 <div class="stats-grid">
     <div class="stat-box"><div class="number">{{ report_data.summary.total_trips }}</div><div class="label">إجمالي الرحلات</div></div>
@@ -27,6 +21,6 @@
     <div class="stat-box"><div class="number">{{ "%.0f"|format(report_data.summary.total_maint_cost_usd or 0) }}</div><div class="label">صيانة (دولار)</div></div>
 </div>
 {% else %}
-<div class="card"><p style="text-align:center; padding:30px;">👆 اختر الشهر والسنة واضغط "عرض التقرير".</p></div>
+<div class="card"><p style="text-align:center; padding:30px;">👆 اختر الشهر والسنة واضغط "عرض".</p></div>
 {% endif %}
 {% endblock %}
