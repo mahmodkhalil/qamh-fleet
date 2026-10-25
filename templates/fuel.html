@@ -216,6 +216,7 @@
                     <th>سعر اللتر</th>
                     <th>الكلفة النهائية</th>
                     <th>العداد</th>
+                    <th>الصورة</th> <!-- عمود الصورة الجديد -->
                     {% if is_admin %}<th>إجراءات</th>{% endif %}
                 </tr>
             </thead>
@@ -256,6 +257,16 @@
                         {% else %}-{% endif %}
                     </td>
                     <td>{{ f.km_at_fill or '-' }}</td>
+                    <td>
+                        <!-- عرض الصورة إذا كانت موجودة -->
+                        {% if f.car_image %}
+                        <a href="/uploads/{{ f.car_image }}" target="_blank">
+                            <img src="/uploads/{{ f.car_image }}" style="width: 40px; height: 40px; object-fit: cover; border-radius: 6px; border: 1px solid #cbd5e0;" alt="صورة العداد">
+                        </a>
+                        {% else %}
+                        <span style="color: #cbd5e0; font-size: 20px;">—</span>
+                        {% endif %}
+                    </td>
                     {% if is_admin %}
                     <td>
                         <a href="/fuel/edit/{{ f.id }}" class="btn btn-primary" style="padding: 5px 10px;">✏️</a>
