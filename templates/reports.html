@@ -13,7 +13,7 @@
             </div>
             <div class="form-group"><label>&nbsp;</label><button type="submit" class="btn btn-primary" style="width:100%;">🔍 عرض التقرير</button></div>
         </div>
-        <!-- رابط التصدير الجديد -->
+        <!-- رابط التصدير الشامل الجديد -->
         <a href="{{ url_for('export_excel', month=selected_month, year=selected_year, car_id=selected_car or '', driver_id=selected_driver or '', requesting_party_id=selected_party or '', report_type=report_type, payment_filter=payment_filter) }}" class="btn btn-success">📥 تصدير التقرير الشامل إلى Excel</a>
     </form>
 </div>
