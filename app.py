@@ -1,7 +1,12 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, send_file, session, send_from_directory, jsonify
 from werkzeug.utils import secure_filename
 from functools import wraps
-import sqlite3, json, sys, subprocess, os, base64
+import sqlite3
+import json
+import sys
+import subprocess
+import os
+import base64
 from datetime import datetime, timedelta
 import io
 from openpyxl import Workbook
@@ -33,8 +38,10 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# ============== إعدادات البوت والذكاء الاصطناعي ==============
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ضع_توكن_البوت_هنا')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'ضع_مفتاح_جيميني_هنا')
+
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_SECRET_KEY = os.environ.get('SUPABASE_SECRET_KEY', '')
 SUPABASE_BUCKET = 'qamh-images'
@@ -421,15 +428,18 @@ def login():
     if request.method == 'POST':
         password = request.form.get('password', ''); login_type = request.form.get('login_type', 'viewer')
         if login_type == 'admin':
-            if password == get_admin_password(): session['role'] = 'admin'; return redirect(url_for('index'))
+            if password == get_admin_password(): session['role'] = 'admin'; flash('مرحباً بك كمسؤول', 'success'); return redirect(url_for('index'))
             else: flash('كلمة سر المسؤول غير صحيحة', 'error')
         else:
-            if password == get_viewer_password(): session['role'] = 'viewer'; return redirect(url_for('index'))
+            if password == get_viewer_password(): session['role'] = 'viewer'; flash('مرحباً بك', 'success'); return redirect(url_for('index'))
             else: flash('كلمة السر غير صحيحة', 'error')
     return render_template('login.html')
 
 @app.route('/logout')
 def logout(): session.clear(); flash('تم تسجيل الخروج', 'success'); return redirect(url_for('login'))
+
+@app.route('/lang/<lang>')
+def set_lang(lang): session['lang'] = lang; return redirect(request.referrer or '/')
 
 @app.route('/settings/passwords', methods=['GET', 'POST'])
 @login_required
@@ -439,13 +449,17 @@ def settings_passwords():
         passwords = load_passwords()
         if is_admin():
             if current_password != passwords.get('admin_password'): flash('كلمة السر الحالية غير صحيحة', 'error'); return redirect(url_for('settings_passwords'))
+            if new_admin and len(new_admin) < 6: flash('كلمة سر المسؤول الجديدة يجب أن تكون 6 أحرف على الأقل', 'error'); return redirect(url_for('settings_passwords'))
+            if new_viewer and len(new_viewer) < 6: flash('كلمة سر المشاهد الجديدة يجب أن تكون 6 أحرف على الأقل', 'error'); return redirect(url_for('settings_passwords'))
             if new_admin: passwords['admin_password'] = new_admin
             if new_viewer: passwords['viewer_password'] = new_viewer
-            save_passwords(passwords); return redirect(url_for('restart_app'))
+            save_passwords(passwords); flash('تم حفظ كلمات السر بنجاح. جاري إعادة تشغيل التطبيق...', 'success'); return redirect(url_for('restart_app'))
         else:
             if current_password != passwords.get('viewer_password'): flash('كلمة السر الحالية غير صحيحة', 'error'); return redirect(url_for('settings_passwords'))
-            if new_viewer: passwords['viewer_password'] = new_viewer
-            save_passwords(passwords); return redirect(url_for('restart_app'))
+            if not new_viewer: flash('الرجاء إدخال كلمة السر الجديدة', 'error'); return redirect(url_for('settings_passwords'))
+            if len(new_viewer) < 6: flash('كلمة السر الجديدة يجب أن تكون 6 أحرف على الأقل', 'error'); return redirect(url_for('settings_passwords'))
+            passwords['viewer_password'] = new_viewer
+            save_passwords(passwords); flash('تم حفظ كلمة السر بنجاح. جاري إعادة تشغيل التطبيق...', 'success'); return redirect(url_for('restart_app'))
     return render_template('settings_passwords.html')
 
 @app.route('/restart')
@@ -468,19 +482,80 @@ def index():
     now = datetime.now(); month_str = now.strftime('%Y-%m')
     execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE trip_date LIKE ?", (month_str + '%',)); trips_month = cursor.fetchone()['cnt']
     execute_query(cursor, "SELECT SUM(distance) as total FROM trips WHERE trip_date LIKE ?", (month_str + '%',)); km_row = cursor.fetchone(); km_month = km_row['total'] if km_row and km_row['total'] else 0
-    execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id ORDER BY t.id DESC LIMIT 10")
-    recent_trips = cursor.fetchall()
+    execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id ORDER BY COALESCE(t.end_km, 0) DESC, t.trip_date DESC, COALESCE(t.exit_time, '00:00') DESC, t.id DESC")
+    all_recent_trips = cursor.fetchall()
+    execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)"); pending_trips_count = cursor.fetchone()['cnt']
+    cost_per_km_map = {}
+    execute_query(cursor, "SELECT DISTINCT id FROM cars WHERE active=1")
+    for row in cursor.fetchall(): cost_per_km_map[row['id']] = get_car_estimated_cost_per_km(row['id'], conn)
     conn.close()
+    trips_by_car = {}
+    for t in all_recent_trips:
+        car_name = t['car_name']
+        if car_name not in trips_by_car: trips_by_car[car_name] = []
+        t_dict = dict(t); cpk = cost_per_km_map.get(t['car_id']); t_dict['cost_per_km'] = cpk; t_dict['trip_cost'] = ((t['distance'] or 0) * cpk) if cpk else None
+        trips_by_car[car_name].append(t_dict)
+    trips_by_car = dict(sorted(trips_by_car.items()))
     stats = {'cars': cars_count, 'drivers': drivers_count, 'trips_month': trips_month, 'km_month': round(km_month, 1)}
-    return render_template('index.html', stats=stats, trips_by_car=recent_trips, alerts=get_maintenance_alerts())
+    alerts = get_maintenance_alerts()
+    return render_template('index.html', stats=stats, trips_by_car=trips_by_car, alerts=alerts, pending_trips_count=pending_trips_count)
+
+@app.route('/api/admin/pending_count')
+@login_required
+def api_admin_pending_count():
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)")
+        count = cursor.fetchone()['cnt']; conn.close()
+        return jsonify({'success': True, 'count': count})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/admin/pending')
 @login_required
 def admin_pending_trips():
     conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE t.trip_source = 'driver_app' AND (t.admin_seen IS NULL OR t.admin_seen = 0) ORDER BY t.id DESC")
-    pending_trips = cursor.fetchall(); conn.close()
+    execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE t.trip_source = 'driver_app' AND (t.admin_seen IS NULL OR t.admin_seen = 0) ORDER BY t.id DESC")
+    pending_trips_raw = cursor.fetchall()
+    pending_trips = []; car_last_check_cache = {}
+    for trip in pending_trips_raw:
+        trip_dict = dict(trip); car_id = trip['car_id']
+        if car_id not in car_last_check_cache:
+            execute_query(cursor, "SELECT dc.*, d.name as driver_name FROM daily_checks dc JOIN drivers d ON dc.driver_id = d.id WHERE dc.car_id = ? ORDER BY dc.id DESC LIMIT 1", (car_id,))
+            last_check_row = cursor.fetchone()
+            if last_check_row:
+                try: check_dt = datetime.strptime(f"{last_check_row['check_date']} {last_check_row['check_time']}", "%Y-%m-%d %H:%M:%S")
+                except:
+                    try: check_dt = datetime.strptime(f"{last_check_row['check_date']} {last_check_row['check_time']}", "%Y-%m-%d %H:%M")
+                    except: check_dt = None
+                if check_dt:
+                    hours_since = (datetime.now() - check_dt).total_seconds() / 3600
+                    car_last_check_cache[car_id] = dict(last_check_row) if hours_since < 24 else None
+                else: car_last_check_cache[car_id] = None
+            else: car_last_check_cache[car_id] = None
+        trip_dict['daily_check_info'] = car_last_check_cache[car_id]
+        pending_trips.append(trip_dict)
+    conn.close()
     return render_template('admin_pending.html', pending_trips=pending_trips)
+
+@app.route('/admin/pending/mark_seen/<int:trip_id>', methods=['POST'])
+@login_required
+def admin_mark_seen(trip_id):
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        execute_query(cursor, "UPDATE trips SET admin_seen = 1, admin_seen_at = ? WHERE id = ?", (now, trip_id))
+        conn.commit(); conn.close(); return jsonify({'success': True})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/admin/pending/mark_all_seen', methods=['POST'])
+@login_required
+def admin_mark_all_seen():
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        execute_query(cursor, "UPDATE trips SET admin_seen = 1, admin_seen_at = ? WHERE trip_source = 'driver_app' AND (admin_seen IS NULL OR admin_seen = 0)", (now,))
+        conn.commit(); conn.close(); return jsonify({'success': True})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/add_trip', methods=['GET', 'POST'])
 @admin_required
@@ -488,22 +563,53 @@ def add_trip():
     conn = get_connection(); cursor = conn.cursor()
     if request.method == 'POST':
         trip_date = request.form['trip_date']; car_id = request.form['car_id']; driver_id = request.form['driver_id']
-        destination = request.form.get('destination', ''); start_km = request.form.get('start_km') or None; end_km = request.form.get('end_km') or None; notes = request.form.get('notes', ''); distance = None
+        destination = request.form.get('destination', ''); start_location = request.form.get('start_location', ''); trip_type = request.form.get('trip_type', '')
+        requesting_party_id = request.form.get('requesting_party_id') or None; requester_name = ''
+        if requesting_party_id:
+            execute_query(cursor, "SELECT name FROM requesting_parties WHERE id=?", (requesting_party_id,)); party_row = cursor.fetchone(); requester_name = party_row['name'] if party_row else ''
+        exit_time = request.form.get('exit_time', ''); return_time = request.form.get('return_time', '')
+        start_km = request.form.get('start_km') or None; end_km = request.form.get('end_km') or None; notes = request.form.get('notes', ''); distance = None
         if start_km and end_km:
             try: distance = float(end_km) - float(start_km)
             except: distance = None
-        execute_query(cursor, "INSERT INTO trips (trip_date, car_id, driver_id, destination, start_km, end_km, distance, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (trip_date, car_id, driver_id, destination, start_km, end_km, distance, notes))
-        conn.commit(); conn.close(); return redirect(url_for('index'))
+        execute_query(cursor, "INSERT INTO trips (trip_date, car_id, driver_id, destination, start_location, trip_type, requester, requesting_party_id, exit_time, return_time, start_km, end_km, distance, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (trip_date, car_id, driver_id, destination, start_location, trip_type, requester_name, requesting_party_id, exit_time, return_time, start_km, end_km, distance, notes))
+        conn.commit(); conn.close(); flash('تم حفظ الرحلة بنجاح', 'success'); return redirect(url_for('index'))
     execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall()
-    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall(); conn.close()
-    return render_template('add_trip.html', cars=cars_list, drivers=drivers_list)
+    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM requesting_parties WHERE active=1 ORDER BY name"); parties_list = cursor.fetchall()
+    conn.close()
+    return render_template('add_trip.html', cars=cars_list, drivers=drivers_list, parties=parties_list)
+
+@app.route('/trips/edit/<int:trip_id>', methods=['GET', 'POST'])
+@admin_required
+def edit_trip(trip_id):
+    conn = get_connection(); cursor = conn.cursor()
+    if request.method == 'POST':
+        trip_date = request.form['trip_date']; car_id = request.form['car_id']; driver_id = request.form['driver_id']
+        destination = request.form.get('destination', ''); start_location = request.form.get('start_location', ''); trip_type = request.form.get('trip_type', '')
+        requesting_party_id = request.form.get('requesting_party_id') or None; requester_name = ''
+        if requesting_party_id:
+            execute_query(cursor, "SELECT name FROM requesting_parties WHERE id=?", (requesting_party_id,)); party_row = cursor.fetchone(); requester_name = party_row['name'] if party_row else ''
+        exit_time = request.form.get('exit_time', ''); return_time = request.form.get('return_time', '')
+        start_km = request.form.get('start_km') or None; end_km = request.form.get('end_km') or None; notes = request.form.get('notes', ''); distance = None
+        if start_km and end_km:
+            try: distance = float(end_km) - float(start_km)
+            except: distance = None
+        execute_query(cursor, "UPDATE trips SET trip_date=?, car_id=?, driver_id=?, destination=?, start_location=?, trip_type=?, requester=?, requesting_party_id=?, exit_time=?, return_time=?, start_km=?, end_km=?, distance=?, notes=? WHERE id=?", (trip_date, car_id, driver_id, destination, start_location, trip_type, requester_name, requesting_party_id, exit_time, return_time, start_km, end_km, distance, notes, trip_id))
+        conn.commit(); conn.close(); flash('تم تعديل الرحلة', 'success'); return redirect(url_for('index'))
+    execute_query(cursor, "SELECT * FROM trips WHERE id=?", (trip_id,)); trip = cursor.fetchone()
+    execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM requesting_parties WHERE active=1 ORDER BY name"); parties_list = cursor.fetchall()
+    conn.close()
+    return render_template('add_trip.html', cars=cars_list, drivers=drivers_list, parties=parties_list, edit_trip=trip)
 
 @app.route('/trips/delete/<int:trip_id>')
 @admin_required
 def delete_trip(trip_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM trips WHERE id=?", (trip_id,)); conn.commit(); conn.close()
-    return redirect(url_for('index'))
+    flash('تم حذف الرحلة', 'success'); return redirect(url_for('index'))
 
 @app.route('/cars')
 @login_required
@@ -521,7 +627,7 @@ def add_car():
     except: expected_consumption = 0
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "INSERT INTO cars (name, plate_number, car_type, notes, fuel_type, expected_consumption) VALUES (?, ?, ?, ?, ?, ?)", (name, plate, car_type, notes, fuel_type, expected_consumption))
-    conn.commit(); conn.close(); return redirect(url_for('cars'))
+    conn.commit(); conn.close(); flash('تم إضافة السيارة', 'success'); return redirect(url_for('cars'))
 
 @app.route('/cars/edit/<int:car_id>', methods=['GET', 'POST'])
 @admin_required
@@ -533,7 +639,7 @@ def edit_car(car_id):
         try: expected_consumption = float(expected_consumption)
         except: expected_consumption = 0
         execute_query(cursor, "UPDATE cars SET name=?, plate_number=?, car_type=?, notes=?, fuel_type=?, expected_consumption=? WHERE id=?", (name, plate, car_type, notes, fuel_type, expected_consumption, car_id))
-        conn.commit(); conn.close(); return redirect(url_for('cars'))
+        conn.commit(); conn.close(); flash('تم تعديل السيارة', 'success'); return redirect(url_for('cars'))
     execute_query(cursor, "SELECT * FROM cars WHERE id=?", (car_id,)); car = cursor.fetchone(); conn.close()
     return render_template('cars.html', cars=[], edit_car=car)
 
@@ -542,7 +648,7 @@ def edit_car(car_id):
 def delete_car(car_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM cars WHERE id=?", (car_id,)); conn.commit(); conn.close()
-    return redirect(url_for('cars'))
+    flash('تم حذف السيارة', 'success'); return redirect(url_for('cars'))
 
 @app.route('/requesting_parties')
 @login_required
@@ -557,33 +663,63 @@ def add_requesting_party():
     name = request.form['name'].strip(); notes = request.form.get('notes', '')
     if not name: flash('اسم الجهة مطلوب', 'error'); return redirect(url_for('requesting_parties'))
     conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT id FROM requesting_parties WHERE name=?", (name,))
+    if cursor.fetchone(): conn.close(); flash('يوجد جهة بنفس الاسم مسبقاً', 'error'); return redirect(url_for('requesting_parties'))
     execute_query(cursor, "INSERT INTO requesting_parties (name, notes, active) VALUES (?, ?, 1)", (name, notes))
-    conn.commit(); conn.close(); return redirect(url_for('requesting_parties'))
+    conn.commit(); conn.close(); flash('تم إضافة الجهة الطالبة', 'success'); return redirect(url_for('requesting_parties'))
+
+@app.route('/requesting_parties/edit/<int:party_id>', methods=['GET', 'POST'])
+@admin_required
+def edit_requesting_party(party_id):
+    conn = get_connection(); cursor = conn.cursor()
+    if request.method == 'POST':
+        name = request.form['name'].strip(); notes = request.form.get('notes', '')
+        if not name: flash('اسم الجهة مطلوب', 'error'); return redirect(url_for('requesting_parties'))
+        execute_query(cursor, "SELECT id FROM requesting_parties WHERE name=? AND id!=?", (name, party_id))
+        if cursor.fetchone(): conn.close(); flash('يوجد جهة أخرى بنفس الاسم', 'error'); return redirect(url_for('requesting_parties'))
+        execute_query(cursor, "UPDATE requesting_parties SET name=?, notes=? WHERE id=?", (name, notes, party_id))
+        execute_query(cursor, "UPDATE trips SET requester=? WHERE requesting_party_id=?", (name, party_id))
+        conn.commit(); conn.close(); flash('تم تعديل الجهة الطالبة', 'success'); return redirect(url_for('requesting_parties'))
+    execute_query(cursor, "SELECT * FROM requesting_parties WHERE id=?", (party_id,)); party = cursor.fetchone()
+    execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY id"); parties = cursor.fetchall(); conn.close()
+    return render_template('requesting_parties.html', parties=parties, edit_party=party)
 
 @app.route('/requesting_parties/delete/<int:party_id>')
 @admin_required
 def delete_requesting_party(party_id):
     conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE requesting_party_id=?", (party_id,)); count = cursor.fetchone()['cnt']
+    if count > 0: conn.close(); flash(f'لا يمكن حذف الجهة — مرتبطة بـ {count} رحلة. عطّلها بدل الحذف.', 'error'); return redirect(url_for('requesting_parties'))
     execute_query(cursor, "DELETE FROM requesting_parties WHERE id=?", (party_id,)); conn.commit(); conn.close()
-    return redirect(url_for('requesting_parties'))
+    flash('تم حذف الجهة الطالبة', 'success'); return redirect(url_for('requesting_parties'))
 
 @app.route('/requesting_parties/toggle/<int:party_id>')
 @admin_required
 def toggle_requesting_party(party_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT active FROM requesting_parties WHERE id=?", (party_id,)); row = cursor.fetchone()
-    if not row: conn.close(); return redirect(url_for('requesting_parties'))
+    if not row: conn.close(); flash('الجهة غير موجودة', 'error'); return redirect(url_for('requesting_parties'))
     new_active = 0 if row['active'] == 1 else 1
     execute_query(cursor, "UPDATE requesting_parties SET active=? WHERE id=?", (new_active, party_id)); conn.commit(); conn.close()
-    return redirect(url_for('requesting_parties'))
+    flash('تم تحديث حالة الجهة', 'success'); return redirect(url_for('requesting_parties'))
 
 @app.route('/daily_checks')
 @login_required
 def daily_checks_list():
+    date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''; car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''
     conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id ORDER BY dc.id DESC")
-    checks = cursor.fetchall(); conn.close()
-    return render_template('daily_checks.html', checks=checks)
+    execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers ORDER BY name"); drivers_list = cursor.fetchall()
+    query = "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE 1=1"
+    params = []
+    if date_from: query += " AND dc.check_date >= ?"; params.append(date_from)
+    if date_to: query += " AND dc.check_date <= ?"; params.append(date_to)
+    if car_id: query += " AND dc.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND dc.driver_id = ?"; params.append(driver_id)
+    query += " ORDER BY dc.id DESC"
+    execute_query(cursor, query, params); checks = cursor.fetchall()
+    total_checks = len(checks); checks_with_issue = len([c for c in checks if c['has_issue'] == 1]); conn.close()
+    return render_template('daily_checks.html', checks=checks, cars=cars_list, drivers=drivers_list, total_checks=total_checks, checks_with_issue=checks_with_issue, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or date_from or date_to))
 
 @app.route('/daily_checks/view/<int:check_id>')
 @login_required
@@ -591,16 +727,31 @@ def daily_check_view(check_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE dc.id = ?", (check_id,))
     check = cursor.fetchone(); conn.close()
-    if not check: return redirect(url_for('daily_checks_list'))
+    if not check: flash('الفحص غير موجود', 'error'); return redirect(url_for('daily_checks_list'))
     return render_template('daily_check_view.html', check=check)
+
+@app.route('/daily_checks/edit/<int:check_id>', methods=['POST'])
+@admin_required
+def daily_check_edit(check_id):
+    admin_notes = request.form.get('admin_notes', ''); has_issue = 1 if request.form.get('has_issue') else 0
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "UPDATE daily_checks SET admin_notes=?, has_issue=? WHERE id=?", (admin_notes, has_issue, check_id))
+    conn.commit(); conn.close(); flash('تم حفظ التعديلات', 'success'); return redirect(url_for('daily_check_view', check_id=check_id))
 
 @app.route('/daily_checks/delete/<int:check_id>')
 @admin_required
 def daily_check_delete(check_id):
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "DELETE FROM daily_checks WHERE id=?", (check_id,)); conn.commit(); conn.close()
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        execute_query(cursor, "SELECT * FROM daily_checks WHERE id=?", (check_id,)); check = cursor.fetchone()
+        if not check: conn.close(); flash('الفحص غير موجود', 'error'); return redirect(url_for('daily_checks_list'))
+        for img_field in ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image']:
+            img_name = check.get(img_field) if check else None
+            if img_name: delete_image_from_supabase(img_name)
+        execute_query(cursor, "DELETE FROM daily_checks WHERE id=?", (check_id,)); conn.commit(); conn.close()
+        flash('تم حذف الفحص اليومي بنجاح', 'success')
+    except Exception as e: flash(f'خطأ في الحذف: {str(e)}', 'error')
     return redirect(url_for('daily_checks_list'))
-
 @app.route('/drivers')
 @login_required
 def drivers():
@@ -608,8 +759,9 @@ def drivers():
     execute_query(cursor, "SELECT * FROM drivers ORDER BY id"); drivers_list = cursor.fetchall()
     execute_query(cursor, "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id ORDER BY tm.date DESC, tm.id DESC"); all_missions = cursor.fetchall()
     execute_query(cursor, "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id ORDER BY o.date DESC, o.id DESC"); all_overtime = cursor.fetchall()
-    missions_by_driver = {}; overtime_by_driver = {}
+    missions_by_driver = {}
     for m in all_missions: missions_by_driver.setdefault(m['driver_id'], []).append(dict(m))
+    overtime_by_driver = {}
     for o in all_overtime: overtime_by_driver.setdefault(o['driver_id'], []).append(dict(o))
     execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); active_drivers = cursor.fetchall(); conn.close()
     return render_template('drivers.html', drivers=drivers_list, active_drivers=active_drivers, missions_by_driver=missions_by_driver, overtime_by_driver=overtime_by_driver)
@@ -620,14 +772,26 @@ def add_driver():
     name = request.form['name']; phone = request.form.get('phone', ''); notes = request.form.get('notes', '')
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "INSERT INTO drivers (name, phone, notes) VALUES (?, ?, ?)", (name, phone, notes))
-    conn.commit(); conn.close(); return redirect(url_for('drivers'))
+    conn.commit(); conn.close(); flash('تم إضافة السائق', 'success'); return redirect(url_for('drivers'))
+
+@app.route('/drivers/edit/<int:driver_id>', methods=['GET', 'POST'])
+@admin_required
+def edit_driver(driver_id):
+    conn = get_connection(); cursor = conn.cursor()
+    if request.method == 'POST':
+        name = request.form['name']; phone = request.form.get('phone', ''); notes = request.form.get('notes', '')
+        execute_query(cursor, "UPDATE drivers SET name=?, phone=?, notes=? WHERE id=?", (name, phone, notes, driver_id))
+        conn.commit(); conn.close(); flash('تم تعديل السائق', 'success'); return redirect(url_for('drivers'))
+    execute_query(cursor, "SELECT * FROM drivers WHERE id=?", (driver_id,)); driver = cursor.fetchone(); conn.close()
+    return render_template('drivers.html', drivers=[], edit_driver=driver)
 
 @app.route('/drivers/delete/<int:driver_id>')
 @admin_required
 def delete_driver(driver_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM drivers WHERE id=?", (driver_id,)); conn.commit(); conn.close()
-    return redirect(url_for('drivers'))
+    flash('تم حذف السائق', 'success'); return redirect(url_for('drivers'))
+
 @app.route('/travel_missions')
 @login_required
 def travel_missions():
@@ -640,12 +804,20 @@ def travel_missions():
 @admin_required
 def add_travel_mission():
     date = request.form['date']; driver_id = request.form['driver_id']; description = request.form.get('description', ''); distance_km = request.form.get('distance_km') or 0
+    departure_time = request.form.get('departure_time', ''); return_time = request.form.get('return_time', ''); notes = request.form.get('notes', '')
     try: distance_km = float(distance_km)
     except: distance_km = 0
     is_travel = 1 if distance_km >= 75 else 0
     conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "INSERT INTO travel_missions (date, driver_id, description, distance_km, is_travel) VALUES (?, ?, ?, ?, ?)", (date, driver_id, description, distance_km, is_travel))
-    conn.commit(); conn.close(); return redirect(url_for('drivers'))
+    execute_query(cursor, "INSERT INTO travel_missions (date, driver_id, description, distance_km, is_travel, departure_time, return_time, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (date, driver_id, description, distance_km, is_travel, departure_time, return_time, notes))
+    conn.commit(); conn.close(); flash('تم حفظ مهمة السفر', 'success'); return redirect(url_for('drivers'))
+
+@app.route('/travel_missions/delete/<int:m_id>')
+@admin_required
+def delete_travel_mission(m_id):
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "DELETE FROM travel_missions WHERE id=?", (m_id,)); conn.commit(); conn.close()
+    flash('تم حذف مهمة السفر', 'success'); return redirect(url_for('drivers'))
 
 @app.route('/overtime')
 @login_required
@@ -665,7 +837,14 @@ def add_overtime():
     except: evening_hours = 0
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "INSERT INTO overtime (date, driver_id, morning_hours, evening_hours, notes) VALUES (?, ?, ?, ?, ?)", (date, driver_id, morning_hours, evening_hours, notes))
-    conn.commit(); conn.close(); return redirect(url_for('drivers'))
+    conn.commit(); conn.close(); flash('تم حفظ الإضافي', 'success'); return redirect(url_for('drivers'))
+
+@app.route('/overtime/delete/<int:o_id>')
+@admin_required
+def delete_overtime(o_id):
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "DELETE FROM overtime WHERE id=?", (o_id,)); conn.commit(); conn.close()
+    flash('تم حذف الإضافي', 'success'); return redirect(url_for('drivers'))
 
 @app.route('/fuel')
 @login_required
@@ -686,14 +865,30 @@ def add_fuel():
     final = request.form.get('final_cost') or None; km = request.form.get('km_at_fill') or None; notes = request.form.get('notes', '')
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes))
-    conn.commit(); conn.close(); return redirect(url_for('fuel'))
+    conn.commit(); conn.close(); flash('تم حفظ تعبئة الوقود', 'success'); return redirect(url_for('fuel'))
+
+@app.route('/fuel/edit/<int:fuel_id>', methods=['GET', 'POST'])
+@admin_required
+def edit_fuel(fuel_id):
+    conn = get_connection(); cursor = conn.cursor()
+    if request.method == 'POST':
+        fuel_date = request.form['fuel_date']; car_id = request.form['car_id']; driver_id = request.form.get('driver_id') or None
+        fuel_type = request.form.get('fuel_type', ''); source = request.form.get('source', ''); payment_status = request.form.get('payment_status', '')
+        liters = request.form.get('liters') or None; price = request.form.get('price_per_liter') or None; total = request.form.get('total_cost') or None
+        final = request.form.get('final_cost') or None; km = request.form.get('km_at_fill') or None; notes = request.form.get('notes', '')
+        execute_query(cursor, "UPDATE fuel SET fuel_date=?, car_id=?, driver_id=?, fuel_type=?, source=?, payment_status=?, liters=?, price_per_liter=?, total_cost=?, final_cost=?, km_at_fill=?, notes=? WHERE id=?", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, fuel_id))
+        conn.commit(); conn.close(); flash('تم تعديل تعبئة الوقود', 'success'); return redirect(url_for('fuel'))
+    execute_query(cursor, "SELECT * FROM fuel WHERE id=?", (fuel_id,)); record = cursor.fetchone()
+    execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall(); conn.close()
+    return render_template('fuel.html', fuel_records=[], cars=cars_list, drivers=drivers_list, edit_fuel=record)
 
 @app.route('/fuel/delete/<int:fuel_id>')
 @admin_required
 def delete_fuel(fuel_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM fuel WHERE id=?", (fuel_id,)); conn.commit(); conn.close()
-    return redirect(url_for('fuel'))
+    flash('تم حذف التعبئة', 'success'); return redirect(url_for('fuel'))
 
 @app.route('/maintenance')
 @login_required
@@ -718,21 +913,44 @@ def add_maintenance():
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename)); invoice_image = filename
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "INSERT INTO maintenance (date, car_id, type, category, km_at_service, cost, currency, invoice_number, invoice_image, workshop, notes, next_service_km, next_service_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (date, car_id, mtype, category, km, cost, currency, invoice_number, invoice_image, workshop, notes, next_km, next_date))
-    conn.commit(); conn.close(); return redirect(url_for('maintenance'))
+    conn.commit(); conn.close(); flash('تم حفظ الصيانة', 'success'); return redirect(url_for('maintenance'))
+
+@app.route('/maintenance/edit/<int:m_id>', methods=['GET', 'POST'])
+@admin_required
+def edit_maintenance(m_id):
+    conn = get_connection(); cursor = conn.cursor()
+    if request.method == 'POST':
+        date = request.form['date']; car_id = request.form['car_id']; mtype = request.form['type']; category = request.form.get('category', 'دورية')
+        km = request.form.get('km_at_service') or None; cost = request.form.get('cost') or None; currency = request.form.get('currency', 'ل.س')
+        invoice_number = request.form.get('invoice_number', ''); workshop = request.form.get('workshop', ''); notes = request.form.get('notes', '')
+        next_km = request.form.get('next_service_km') or None; next_date = request.form.get('next_service_date') or None
+        execute_query(cursor, "SELECT invoice_image FROM maintenance WHERE id=?", (m_id,)); old = cursor.fetchone(); invoice_image = old['invoice_image'] if old else None
+        if 'invoice_image' in request.files:
+            file = request.files['invoice_image']
+            if file and file.filename and allowed_file(file.filename):
+                filename = secure_filename(file.filename); timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_'); filename = timestamp + filename
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename)); invoice_image = filename
+        execute_query(cursor, "UPDATE maintenance SET date=?, car_id=?, type=?, category=?, km_at_service=?, cost=?, currency=?, invoice_number=?, invoice_image=?, workshop=?, notes=?, next_service_km=?, next_service_date=? WHERE id=?", (date, car_id, mtype, category, km, cost, currency, invoice_number, invoice_image, workshop, notes, next_km, next_date, m_id))
+        conn.commit(); conn.close(); flash('تم تعديل الصيانة', 'success'); return redirect(url_for('maintenance'))
+    execute_query(cursor, "SELECT * FROM maintenance WHERE id=?", (m_id,)); record = cursor.fetchone()
+    execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall(); conn.close()
+    return render_template('maintenance.html', records=[], cars=cars_list, edit_maintenance=record)
 
 @app.route('/maintenance/delete/<int:m_id>')
 @admin_required
 def delete_maintenance(m_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM maintenance WHERE id=?", (m_id,)); conn.commit(); conn.close()
-    return redirect(url_for('maintenance'))
+    flash('تم حذف الصيانة', 'success'); return redirect(url_for('maintenance'))
 
 @app.route('/uploads/<filename>')
 def uploaded_file(filename):
     if not filename: return jsonify({'error': 'not found'}), 404
     if SUPABASE_URL and SUPABASE_BUCKET:
-        local_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        if os.path.exists(local_path): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        try:
+            local_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            if os.path.exists(local_path): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+        except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 # ============== التقارير ==============
@@ -741,21 +959,20 @@ def uploaded_file(filename):
 def reports():
     month = int(request.args.get('month', datetime.now().month)); year = int(request.args.get('year', datetime.now().year))
     conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
-    execute_query(cursor, "SELECT * FROM drivers ORDER BY name"); drivers_list = cursor.fetchall()
-    execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY name"); parties_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM requesting_parties WHERE active=1 ORDER BY name"); parties_list = cursor.fetchall()
     years = list(range(2024, datetime.now().year + 2)); report_data = None
     if request.args.get('month'):
         month_str = f"{year:04d}-{month:02d}"
         execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE t.trip_date LIKE ?", (month_str + '%',)); trips = cursor.fetchall()
         execute_query(cursor, "SELECT f.*, c.name as car_name FROM fuel f JOIN cars c ON f.car_id = c.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
         execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?", (month_str + '%',)); maints = cursor.fetchall()
-        report_data = {'summary': {
-            'total_trips': len(trips), 'total_km': sum(t['distance'] or 0 for t in trips),
-            'total_liters': sum(f['liters'] or 0 for f in fuels), 'total_fuel_cost': sum(get_effective_cost(f) for f in fuels),
-            'total_maint_cost_syp': sum(m['cost'] or 0 for m in maints if m.get('currency', 'ل.س') == 'ل.س'),
-            'total_maint_cost_usd': sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار'),
-        }}
+        total_trips = len(trips); total_km = sum(t['distance'] or 0 for t in trips); total_liters = sum(f['liters'] or 0 for f in fuels)
+        total_fuel_cost = sum(get_effective_cost(f) for f in fuels)
+        total_maint_syp = sum(m['cost'] or 0 for m in maints if m.get('currency', 'ل.س') == 'ل.س')
+        total_maint_usd = sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار')
+        report_data = {'summary': {'total_trips': total_trips, 'total_km': total_km, 'total_liters': total_liters, 'total_fuel_cost': total_fuel_cost, 'total_maint_cost_syp': total_maint_syp, 'total_maint_cost_usd': total_maint_usd}}
     conn.close()
     return render_template('reports.html', cars=cars_list, drivers=drivers_list, parties=parties_list, years=years, selected_month=month, selected_year=year, report_data=report_data)
 
@@ -776,8 +993,9 @@ def reports_trips():
     if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
     query += " ORDER BY t.trip_date DESC, t.id DESC"
     execute_query(cursor, query, params); trips = cursor.fetchall()
-    summary = {'total_trips': len(trips), 'total_km': sum(t['distance'] or 0 for t in trips)}
+    total_trips = len(trips); total_km = sum(t['distance'] or 0 for t in trips)
     conn.close()
+    summary = {'total_trips': total_trips, 'total_km': total_km}
     return render_template('reports_trips.html', cars=cars_list, drivers=drivers_list, parties=parties_list, trips=trips, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or date_from or date_to))
 
 @app.route('/reports/fuel')
@@ -797,13 +1015,14 @@ def reports_fuel():
         if payment_filter == 'خزان الشركة': query += " AND f.source = ?"; params.append('خزان الشركة')
         elif payment_filter == 'كازية': query += " AND f.source = ?"; params.append('كازية')
         else: query += " AND f.payment_status = ?"; params.append(payment_filter)
-    query += " ORDER BY f.fuel_date DESC, f.id DESC"
+    query += " ORDER BY f.fuel_date DESC, f.km_at_fill DESC, f.id DESC"
     execute_query(cursor, query, params); fuel_records = cursor.fetchall()
-    summary = {'total_records': len(fuel_records), 'total_liters': sum(f['liters'] or 0 for f in fuel_records), 'total_cost': sum(get_effective_cost(f) for f in fuel_records)}
+    total_records = len(fuel_records); total_liters = sum(f['liters'] or 0 for f in fuel_records)
+    total_cost = sum(get_effective_cost(f) for f in fuel_records); avg_price = total_cost / total_liters if total_liters > 0 else 0
     conn.close()
+    summary = {'total_records': total_records, 'total_liters': total_liters, 'total_cost': total_cost, 'avg_price': avg_price}
     return render_template('reports_fuel.html', cars=cars_list, drivers=drivers_list, fuel_records=fuel_records, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, payment_filter=payment_filter, has_filter=bool(car_id or driver_id or date_from or date_to or payment_filter))
 
-# ============== تصدير الإكسيل ==============
 @app.route('/reports/export')
 @login_required
 def export_excel():
@@ -811,18 +1030,19 @@ def export_excel():
     month_str = f"{year:04d}-{month:02d}"
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE t.trip_date LIKE ?", (month_str + '%',)); trips = cursor.fetchall()
-    execute_query(cursor, "SELECT f.*, c.name as car_name FROM fuel f JOIN cars c ON f.car_id = c.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
+    execute_query(cursor, "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
     execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?", (month_str + '%',)); maints = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
     conn.close()
-    
+
     wb = Workbook(); ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
     ws_sum.append(['التقرير الشهري الشامل', month_str]); ws_sum.append([]); ws_sum.append(['الإحصائية', 'القيمة'])
     ws_sum.append(['إجمالي الرحلات', len(trips)]); ws_sum.append(['إجمالي الكيلومترات', sum(t['distance'] or 0 for t in trips)])
     ws_sum.append(['إجمالي اللترات', sum(f['liters'] or 0 for f in fuels)]); ws_sum.append(['إجمالي كلفة الوقود', sum(get_effective_cost(f) for f in fuels)])
     ws_sum.append(['إجمالي كلفة الصيانة (ل.س)', sum(m['cost'] or 0 for m in maints if m.get('currency', 'ل.س') == 'ل.س')])
     ws_sum.append(['إجمالي كلفة الصيانة (دولار)', sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار')])
-    
+
     for c in cars_list:
         c_trips = [t for t in trips if t['car_id'] == c['id']]; c_fuel = [f for f in fuels if f['car_id'] == c['id']]; c_maint = [m for m in maints if m['car_id'] == c['id']]
         if not c_trips and not c_fuel and not c_maint: continue
@@ -834,11 +1054,7 @@ def export_excel():
         for f in c_fuel: ws_c.append(['', f['fuel_date'], f['liters'] or 0, get_effective_cost(f)])
         ws_c.append([]); ws_c.append(['الصيانة:', 'التاريخ', 'النوع', 'التكلفة', 'العملة'])
         for m in c_maint: ws_c.append(['', m['date'], m['type'], m['cost'] or 0, m.get('currency', 'ل.س')])
-        
-    ws3 = wb.create_sheet(f"تفاصيل الرحلات"); ws3.sheet_view.rightToLeft = True
-    ws3.append(['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)', 'ملاحظات'])
-    for t in trips: ws3.append([t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '', t['distance'] or 0, t['notes'] or ''])
-    
+
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_report_{month_str}.xlsx')
 
@@ -857,15 +1073,19 @@ def export_trips_excel():
     query += " ORDER BY t.trip_date DESC, t.id DESC"
     execute_query(cursor, query, params); trips = cursor.fetchall(); conn.close()
     wb = Workbook(); ws = wb.active; ws.title = "Trips Report"; ws.sheet_view.rightToLeft = True
-    ws.append(['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)', 'ملاحظات'])
-    for t in trips: ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '', t['distance'] or 0, t['notes'] or ''])
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
+    headers = ['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)', 'ملاحظات']
+    ws.append(headers)
+    for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
+    for t in trips:
+        ws.append([t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '', t['distance'] or '', t['notes'] or ''])
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='trips_report.xlsx')
 
 @app.route('/reports/fuel/export')
 @login_required
 def export_fuel_excel():
-    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''; date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
+    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''; date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''; payment_filter = request.args.get('payment_filter') or ''
     conn = get_connection(); cursor = conn.cursor()
     query = "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE 1=1"
     params = []
@@ -876,8 +1096,12 @@ def export_fuel_excel():
     query += " ORDER BY f.fuel_date DESC, f.id DESC"
     execute_query(cursor, query, params); fuel_records = cursor.fetchall(); conn.close()
     wb = Workbook(); ws = wb.active; ws.title = "Fuel Report"; ws.sheet_view.rightToLeft = True
-    ws.append(['التاريخ', 'السيارة', 'السائق', 'اللترات', 'الكلفة'])
-    for f in fuel_records: ws.append([f['fuel_date'], f['car_name'], f['driver_name'], f['liters'] or 0, get_effective_cost(f)])
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
+    headers = ['التاريخ', 'السيارة', 'السائق', 'اللترات', 'الكلفة']
+    ws.append(headers)
+    for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
+    for f in fuel_records:
+        ws.append([f['fuel_date'], f['car_name'], f['driver_name'], f['liters'] or 0, get_effective_cost(f)])
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='fuel_report.xlsx')
 # ============== Driver App API ==============
@@ -896,12 +1120,19 @@ def api_driver_init():
         return jsonify({'success': True, 'drivers': drivers_list, 'cars': cars_list, 'parties': parties_list, 'busy_driver_ids': busy_driver_ids, 'busy_car_ids': busy_car_ids, 'alerts': critical_alerts})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/driver/alerts', methods=['GET'])
+def api_driver_alerts():
+    try:
+        alerts = get_maintenance_alerts(); critical_alerts = [a for a in alerts if a['status'] == 'red']
+        return jsonify({'success': True, 'alerts': critical_alerts})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/driver/last_check/<int:car_id>', methods=['GET'])
 def api_driver_last_check(car_id):
     try:
         conn = get_connection(); last_check = get_last_daily_check(car_id, conn); conn.close()
         if last_check:
-            return jsonify({'success': True, 'needs_check': False, 'last_check': {'id': last_check['id'], 'check_date': last_check['check_date'], 'check_time': last_check['check_time'], 'driver_name': last_check['driver_name']}})
+            return jsonify({'success': True, 'needs_check': False, 'last_check': {'id': last_check['id'], 'check_date': last_check['check_date'], 'check_time': last_check['check_time'], 'driver_name': last_check['driver_name'], 'general_notes': last_check['general_notes'] or '', 'has_issue': last_check['has_issue'], 'oil_image': last_check.get('oil_image'), 'radiator_image': last_check.get('radiator_image'), 'tires_image': last_check.get('tires_image'), 'battery_image': last_check.get('battery_image'), 'belts_image': last_check.get('belts_image'), 'oil_notes': last_check.get('oil_notes') or '', 'radiator_notes': last_check.get('radiator_notes') or '', 'tires_notes': last_check.get('tires_notes') or '', 'battery_notes': last_check.get('battery_notes') or '', 'belts_notes': last_check.get('belts_notes') or ''}})
         return jsonify({'success': True, 'needs_check': True})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -911,50 +1142,99 @@ def api_driver_daily_check():
         data = request.get_json(); car_id = data.get('car_id'); driver_id = data.get('driver_id'); km_at_check = data.get('km_at_check') or None
         general_notes = data.get('general_notes', ''); has_issue = 1 if data.get('has_issue') else 0
         if not car_id or not driver_id: return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
+        images = {}
+        for field in ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image']:
+            img_b64 = data.get(field, '')
+            if img_b64 and len(img_b64) > 100:
+                try:
+                    if ',' in img_b64: img_b64 = img_b64.split(',', 1)[1]
+                    img_data = base64.b64decode(img_b64); timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); filename = f"check_{field}_{car_id}_{driver_id}_{timestamp}.jpg"
+                    uploaded = upload_image_to_supabase(filename, img_data)
+                    if uploaded: images[field] = uploaded
+                    else:
+                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                        with open(filepath, 'wb') as f: f.write(img_data)
+                        images[field] = filename
+                except: images[field] = None
+            else: images[field] = None
         now = datetime.now() + timedelta(hours=3); check_date = now.strftime('%Y-%m-%d'); check_time = now.strftime('%H:%M:%S'); created_at = now.strftime('%Y-%m-%d %H:%M:%S')
         conn = get_connection(); cursor = conn.cursor()
-        execute_query(cursor, "INSERT INTO daily_checks (check_date, check_time, car_id, driver_id, km_at_check, general_notes, has_issue, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", (check_date, check_time, car_id, driver_id, km_at_check, general_notes, has_issue, created_at))
-        conn.commit(); conn.close()
-        return jsonify({'success': True, 'message': 'تم حفظ الفحص اليومي'})
+        execute_query(cursor, """INSERT INTO daily_checks (check_date, check_time, car_id, driver_id, km_at_check, oil_checked, radiator_checked, tires_checked, battery_checked, belts_checked, oil_notes, radiator_notes, tires_notes, battery_notes, belts_notes, oil_image, radiator_image, tires_image, battery_image, belts_image, general_notes, has_issue, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (check_date, check_time, car_id, driver_id, km_at_check, 1 if data.get('oil_checked') else 0, 1 if data.get('radiator_checked') else 0, 1 if data.get('tires_checked') else 0, 1 if data.get('battery_checked') else 0, 1 if data.get('belts_checked') else 0, data.get('oil_notes', ''), data.get('radiator_notes', ''), data.get('tires_notes', ''), data.get('battery_notes', ''), data.get('belts_notes', ''), images.get('oil_image'), images.get('radiator_image'), images.get('tires_image'), images.get('battery_image'), images.get('belts_image'), general_notes, has_issue, created_at))
+        conn.commit(); execute_query(cursor, "SELECT MAX(id) as max_id FROM daily_checks"); row = cursor.fetchone(); check_id = row['max_id'] if row else None; conn.close()
+        return jsonify({'success': True, 'check_id': check_id, 'message': 'تم حفظ الفحص اليومي'})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/driver/start_trip', methods=['POST'])
 def api_driver_start_trip():
     try:
         data = request.get_json(); driver_id = data.get('driver_id'); car_id = data.get('car_id'); destination = data.get('destination', '').strip()
-        start_km = data.get('start_km')
+        start_km = data.get('start_km'); start_image_b64 = data.get('start_image', ''); requesting_party_id = data.get('requesting_party_id') or None
         if not driver_id or not car_id: return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
         if not destination: return jsonify({'success': False, 'error': 'الرجاء إدخال الوجهة'}), 400
         if start_km is None or str(start_km).strip() == '': return jsonify({'success': False, 'error': 'الرجاء إدخال قراءة العداد'}), 400
         try:
             start_km = float(start_km)
-        except: return jsonify({'success': False, 'error': 'قراءة العداد غير صحيحة'}), 400
-        now = datetime.now() + timedelta(hours=3); trip_date = now.strftime('%Y-%m-%d'); start_time = now.strftime('%H:%M:%S')
+            if start_km <= 0: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
+        except: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
+        start_image_filename = None
+        if start_image_b64 and len(start_image_b64) > 100:
+            try:
+                if ',' in start_image_b64: start_image_b64 = start_image_b64.split(',', 1)[1]
+                img_data = base64.b64decode(start_image_b64); timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); start_image_filename = f"trip_start_{driver_id}_{car_id}_{timestamp}.jpg"
+                uploaded = upload_image_to_supabase(start_image_filename, img_data)
+                if uploaded: start_image_filename = uploaded
+                else:
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], start_image_filename)
+                    with open(filepath, 'wb') as f: f.write(img_data)
+            except: start_image_filename = None
+        now = datetime.now() + timedelta(hours=3); trip_date = now.strftime('%Y-%m-%d'); start_time = now.strftime('%H:%M:%S'); requester_name = ''
         conn = get_connection(); cursor = conn.cursor()
-        execute_query(cursor, "INSERT INTO trips (trip_date, car_id, driver_id, destination, start_km, start_time, trip_source, admin_seen) VALUES (?, ?, ?, ?, ?, ?, 'driver_app', 0)", (trip_date, car_id, driver_id, destination, start_km, start_time))
-        conn.commit(); conn.close()
-        return jsonify({'success': True, 'message': 'تم بدء الرحلة بنجاح'})
+        if requesting_party_id:
+            execute_query(cursor, "SELECT name FROM requesting_parties WHERE id=?", (requesting_party_id,)); party_row = cursor.fetchone(); requester_name = party_row['name'] if party_row else ''
+        execute_query(cursor, """INSERT INTO trips (trip_date, car_id, driver_id, destination, start_km, start_time, start_image, trip_source, driver_confirmed, admin_seen, notes, requesting_party_id, requester) VALUES (?, ?, ?, ?, ?, ?, ?, 'driver_app', 1, 0, ?, ?, ?)""", (trip_date, car_id, driver_id, destination, start_km, start_time, start_image_filename, 'رحلة مسجلة من تطبيق السائق', requesting_party_id, requester_name))
+        conn.commit(); execute_query(cursor, "SELECT MAX(id) as max_id FROM trips"); row = cursor.fetchone(); trip_id = row['max_id'] if row else None; conn.close()
+        return jsonify({'success': True, 'trip_id': trip_id, 'message': 'تم بدء الرحلة بنجاح', 'start_time': start_time})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/driver/end_trip', methods=['POST'])
 def api_driver_end_trip():
     try:
-        data = request.get_json(); trip_id = data.get('trip_id'); end_km = data.get('end_km'); notes = data.get('notes', '')
+        data = request.get_json(); trip_id = data.get('trip_id'); end_km = data.get('end_km'); end_image_b64 = data.get('end_image', ''); notes = data.get('notes', '')
         if not trip_id: return jsonify({'success': False, 'error': 'رقم الرحلة مفقود'}), 400
+        if end_km is None or str(end_km).strip() == '': return jsonify({'success': False, 'error': 'الرجاء إدخال قراءة العداد النهائية'}), 400
         try:
             end_km = float(end_km)
-        except: return jsonify({'success': False, 'error': 'قراءة العداد غير صحيحة'}), 400
+            if end_km <= 0: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
+        except: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
         conn = get_connection(); cursor = conn.cursor()
         execute_query(cursor, "SELECT start_km FROM trips WHERE id=?", (trip_id,)); trip = cursor.fetchone()
         if not trip: conn.close(); return jsonify({'success': False, 'error': 'الرحلة غير موجودة'}), 404
         start_km = trip['start_km']
-        distance = None
         if start_km is not None:
-            distance = end_km - float(start_km)
+            try:
+                if end_km <= float(start_km): conn.close(); return jsonify({'success': False, 'error': f'قراءة العداد النهائية ({end_km}) يجب أن تكون أكبر من قراءة البداية ({start_km})'}), 400
+            except: pass
+        distance = None
+        if start_km is not None and end_km is not None:
+            try:
+                distance = float(end_km) - float(start_km)
+                if distance < 0: distance = None
+            except: distance = None
+        end_image_filename = None
+        if end_image_b64 and len(end_image_b64) > 100:
+            try:
+                if ',' in end_image_b64: end_image_b64 = end_image_b64.split(',', 1)[1]
+                img_data = base64.b64decode(end_image_b64); timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); end_image_filename = f"trip_end_{trip_id}_{timestamp}.jpg"
+                uploaded = upload_image_to_supabase(end_image_filename, img_data)
+                if uploaded: end_image_filename = uploaded
+                else:
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], end_image_filename)
+                    with open(filepath, 'wb') as f: f.write(img_data)
+            except: end_image_filename = None
         now = datetime.now() + timedelta(hours=3); end_time = now.strftime('%H:%M:%S')
-        execute_query(cursor, "UPDATE trips SET end_km=?, end_time=?, distance=?, notes=? WHERE id=?", (end_km, end_time, distance, notes, trip_id))
+        execute_query(cursor, "UPDATE trips SET end_km=?, end_time=?, end_image=?, distance=?, notes=? WHERE id=?", (end_km, end_time, end_image_filename, distance, notes, trip_id))
         conn.commit(); conn.close()
-        return jsonify({'success': True, 'message': 'تم إنهاء الرحلة', 'distance': distance})
+        return jsonify({'success': True, 'message': 'تم إنهاء الرحلة بنجاح', 'end_time': end_time, 'distance': distance})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/driver/active_trip/<int:driver_id>', methods=['GET'])
@@ -965,6 +1245,24 @@ def api_driver_active_trip(driver_id):
         trip = cursor.fetchone(); conn.close()
         if trip: return jsonify({'success': True, 'has_active': True, 'trip': dict(trip)})
         return jsonify({'success': True, 'has_active': False})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/driver/recent_trips/<int:driver_id>', methods=['GET'])
+def api_driver_recent_trips(driver_id):
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        execute_query(cursor, "SELECT t.id, t.trip_date, t.destination, t.start_km, t.end_km, t.distance, t.start_time, t.end_time, c.name as car_name FROM trips t JOIN cars c ON t.car_id = c.id WHERE t.driver_id = ? ORDER BY t.id DESC LIMIT 5", (driver_id,))
+        trips = [dict(row) for row in cursor.fetchall()]; conn.close()
+        return jsonify({'success': True, 'trips': trips})
+    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/driver/pending_count/<int:driver_id>', methods=['GET'])
+def api_driver_pending_count(driver_id):
+    try:
+        conn = get_connection(); cursor = conn.cursor()
+        execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE driver_id = ? AND trip_source = 'driver_app' AND end_km IS NULL", (driver_id,))
+        count = cursor.fetchone()['cnt']; conn.close()
+        return jsonify({'success': True, 'count': count})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 # ============== Telegram Webhook & Pending Fuel ==============
 telegram_pending_photos = {}
@@ -1009,7 +1307,10 @@ def telegram_webhook():
                     conn = get_connection(); cursor = conn.cursor()
                     now = datetime.now() + timedelta(hours=3)
                     
-                    execute_query(cursor, "INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)", (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورتين مرسلتين من تلغرام. النص: {text}", session['car_image'], session['station_image']))
+                    execute_query(cursor, """
+                        INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) 
+                        VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+                    """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورتين مرسلتين من تلغرام. النص: {text}", session['car_image'], session['station_image']))
                     conn.commit(); conn.close()
                     
                     del telegram_pending_photos[chat_id]
@@ -1046,7 +1347,7 @@ def approve_pending_fuel(req_id):
         car_image = req['car_image'] if 'car_image' in req.keys() else None
         station_image = req['station_image'] if 'station_image' in req.keys() else None
 
-        execute_query(cursor, "INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes, car_image, station_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, car_image, station_image))
+        execute_query(cursor, """INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes, car_image, station_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, car_image, station_image))
         execute_query(cursor, "UPDATE pending_fuel SET status='approved' WHERE id=?", (req_id,))
         conn.commit(); flash('تمت الموافقة وإدخال التعبئة في النظام بنجاح', 'success')
     else: flash('الطلب غير موجود', 'error')
