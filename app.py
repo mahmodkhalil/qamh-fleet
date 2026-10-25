@@ -158,7 +158,8 @@ def get_busy_car_ids():
     execute_query(cursor, "SELECT DISTINCT car_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'")
     rows = cursor.fetchall(); conn.close()
     return {r['car_id'] for r in rows}
-    # ============== إنشاء الجداول ==============
+
+# ============== إنشاء الجداول ==============
 def ensure_all_tables():
     conn = get_connection(); cursor = conn.cursor()
     if is_postgres():
@@ -246,7 +247,8 @@ def inject_permissions():
             pending_fuel_count = cursor.fetchone()['cnt']; conn.close()
         except: pass
     return {'is_admin': is_admin(), 'is_viewer': is_viewer(), 'pending_fuel_count': pending_fuel_count}
-    # ============== المسارات الأساسية ==============
+
+# ============== المسارات الأساسية ==============
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -407,7 +409,8 @@ def toggle_requesting_party(party_id):
     new_active = 0 if row['active'] == 1 else 1
     execute_query(cursor, "UPDATE requesting_parties SET active=? WHERE id=?", (new_active, party_id)); conn.commit(); conn.close()
     return redirect(url_for('requesting_parties'))
-    @app.route('/daily_checks')
+
+@app.route('/daily_checks')
 @login_required
 def daily_checks_list():
     conn = get_connection(); cursor = conn.cursor()
@@ -538,7 +541,8 @@ def uploaded_file(filename):
         if os.path.exists(local_path): return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-    # ============== التقارير ==============
+
+# ============== التقارير ==============
 @app.route('/reports')
 @login_required
 def reports():
@@ -683,7 +687,8 @@ def export_fuel_excel():
     for f in fuel_records: ws.append([f['fuel_date'], f['car_name'], f['driver_name'], f['liters'] or 0, get_effective_cost(f)])
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='fuel_report.xlsx')
-    # ============== Driver App API ==============
+
+# ============== Driver App API ==============
 @app.route('/driver')
 def driver_app(): return render_template('driver_app.html')
 
@@ -769,7 +774,8 @@ def api_driver_active_trip(driver_id):
         if trip: return jsonify({'success': True, 'has_active': True, 'trip': dict(trip)})
         return jsonify({'success': True, 'has_active': False})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-        # ============== Telegram Webhook & Pending Fuel ==============
+
+# ============== Telegram Webhook & Pending Fuel ==============
 telegram_pending_photos = {}
 
 @app.route('/telegram_webhook', methods=['POST'])
