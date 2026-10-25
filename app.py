@@ -402,6 +402,7 @@ ensure_maintenance_currency()
 ensure_pending_fuel_table()
 migrate_requesting_parties()
 ensure_fuel_columns()
+
 # ============== دوال الذكاء الاصطناعي وتلغرام ==============
 def send_telegram_message(chat_id, text):
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == 'ضع_توكن_البوت_هنا': return
@@ -426,7 +427,6 @@ def extract_data_from_images(car_img_b64):
     except Exception as e:
         print(f"⚠ خطأ في OCR: {e}")
         return {'km': None, 'liters': None, 'error': str(e)}
-
 # ============== Context Processor ==============
 @app.context_processor
 def inject_permissions():
@@ -628,7 +628,6 @@ def delete_trip(trip_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM trips WHERE id=?", (trip_id,)); conn.commit(); conn.close()
     flash('تم حذف الرحلة', 'success'); return redirect(url_for('index'))
-
 @app.route('/cars')
 @login_required
 def cars():
@@ -971,8 +970,6 @@ def uploaded_file(filename):
         except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
-# ============== التقارير الشهرية ==============
 @app.route('/reports')
 @login_required
 def reports():
@@ -1069,7 +1066,6 @@ def reports():
     conn.close()
     return render_template('reports.html', cars=cars_list, drivers=drivers_list, parties=parties_list, years=years, selected_month=month, selected_year=year, selected_car=car_id, selected_driver=driver_id, selected_party=requesting_party_id, report_data=report_data, report_type=report_type, payment_filter=payment_filter)
 
-# ... (باقي التقارير المخصصة مثل reports_drivers, reports_trips, إلخ بنفس المنطق السابق)
 @app.route('/reports/drivers')
 @login_required
 def reports_drivers():
@@ -1269,7 +1265,6 @@ def reports_maintenance():
     summary = {'total_records': total_records, 'total_cost_syp': total_cost_syp, 'total_cost_usd': total_cost_usd, 'by_category': by_category, 'by_car': by_car}
     return render_template('reports_maintenance.html', cars=cars_list, records=records, summary=summary, selected_car=car_id, date_from=date_from, date_to=date_to, selected_type=mtype, selected_category=category, has_filter=bool(car_id or date_from or date_to or mtype or category))
 
-# ============== Excel Exports ==============
 @app.route('/reports/export')
 @login_required
 def export_excel():
@@ -1369,9 +1364,6 @@ def export_trips_excel():
         max_length = max(len(str(cell.value or '')) for cell in col); ws.column_dimensions[col[0].column_letter].width = max_length + 3
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='trips_report.xlsx')
-
-# ... (باقي مسارات التصدير مثل requesting_parties, daily_checks, fuel, maintenance, drivers يمكنك استخدام الكود القديم لها)
-
 # ============== Driver App API ==============
 @app.route('/driver')
 def driver_app(): return render_template('driver_app.html')
@@ -1532,116 +1524,72 @@ def api_driver_pending_count(driver_id):
         count = cursor.fetchone()['cnt']; conn.close()
         return jsonify({'success': True, 'count': count})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
+
 # ============== Telegram Webhook & Pending Fuel ==============
 @app.route('/telegram_webhook', methods=['POST'])
 def telegram_webhook():
     data = request.get_json()
     if 'message' in data:
-        chat_id = data['message']['chat']['id']
-        text = data['message'].get('text', '')
-        photos = data['message'].get('photo', [])
-        
+        chat_id = data['message']['chat']['id']; text = data['message'].get('text', ''); photos = data['message'].get('photo', [])
         if photos:
-            file_id = photos[-1]['file_id']
-            file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}"
+            file_id = photos[-1]['file_id']; file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}"
             try:
-                file_info = requests.get(file_info_url).json()
-                file_path = file_info['result']['file_path']
-                img_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
-                img_data = requests.get(img_url).content
+                file_info = requests.get(file_info_url).json(); file_path = file_info['result']['file_path']
+                img_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"; img_data = requests.get(img_url).content
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); filename = f"tg_fuel_{chat_id}_{timestamp}.jpg"
                 
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                filename = f"tg_fuel_{chat_id}_{timestamp}.jpg"
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                with open(filepath, 'wb') as f: f.write(img_data)
-                
-                img_b64 = base64.b64encode(img_data).decode('utf-8')
-                extracted = extract_data_from_images(img_b64)
-                
-                conn = get_connection()
-                cursor = conn.cursor()
-                now = datetime.now() + timedelta(hours=3)
-                execute_query(cursor, """
-                    INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image)
-                    VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?)
-                """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورة عداد مرسلة من تلغرام. النص: {text}", filename))
-                conn.commit()
-                conn.close()
-                
+                # التعديل: نرفع الصورة إلى Supabase مباشرة
+                uploaded_filename = upload_image_to_supabase(filename, img_data)
+                if not uploaded_filename:
+                    send_telegram_message(chat_id, "❌ فشل رفع الصورة إلى التخزين السحابي.")
+                    return jsonify({'status': 'error'})
+                filename = uploaded_filename
+
+                img_b64 = base64.b64encode(img_data).decode('utf-8'); extracted = extract_data_from_images(img_b64)
+                conn = get_connection(); cursor = conn.cursor(); now = datetime.now() + timedelta(hours=3)
+                execute_query(cursor, """INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image) VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?)""", (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورة عداد مرسلة من تلغرام. النص: {text}", filename))
+                conn.commit(); conn.close()
                 send_telegram_message(chat_id, "✅ تم استلام الصورة وحفظها كطلب تعبئة معلق. بانتظار مراجعة الإدارة.")
-            except Exception as e:
-                send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
-                
-        elif text:
-            send_telegram_message(chat_id, "ℹ️ تم استلام رسالتك. يرجى إرسال الصور فقط، وسيقوم المسؤول بإدخال البيانات.")
+            except Exception as e: send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
+        elif text: send_telegram_message(chat_id, "ℹ️ تم استلام رسالتك. يرجى إرسال الصور فقط، وسيقوم المسؤول بإدخال البيانات.")
     return jsonify({'status': 'ok'})
 
 @app.route('/admin/pending_fuel')
 @login_required
 def admin_pending_fuel():
-    conn = get_connection()
-    cursor = conn.cursor()
-    execute_query(cursor, """
-        SELECT pf.*, d.name as driver_name, c.name as car_name
-        FROM pending_fuel pf LEFT JOIN drivers d ON pf.driver_id = d.id LEFT JOIN cars c ON pf.car_id = c.id
-        WHERE pf.status = 'pending' ORDER BY pf.id DESC
-    """)
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT pf.*, d.name as driver_name, c.name as car_name FROM pending_fuel pf LEFT JOIN drivers d ON pf.driver_id = d.id LEFT JOIN cars c ON pf.car_id = c.id WHERE pf.status = 'pending' ORDER BY pf.id DESC")
     pending_fuels = cursor.fetchall()
-    execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name")
-    cars_list = cursor.fetchall()
-    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name")
-    drivers_list = cursor.fetchall()
-    conn.close()
+    execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall(); conn.close()
     return render_template('admin_pending_fuel.html', pending_fuels=pending_fuels, cars=cars_list, drivers=drivers_list)
 
 @app.route('/admin/pending_fuel/approve/<int:req_id>', methods=['POST'])
 @admin_required
 def approve_pending_fuel(req_id):
-    conn = get_connection()
-    cursor = conn.cursor()
-    execute_query(cursor, "SELECT * FROM pending_fuel WHERE id=?", (req_id,))
-    req = cursor.fetchone()
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT * FROM pending_fuel WHERE id=?", (req_id,)); req = cursor.fetchone()
     if req:
-        fuel_date = request.form.get('fuel_date') or req['fuel_date']
-        car_id = request.form.get('car_id')
-        driver_id = request.form.get('driver_id') or None
-        fuel_type = request.form.get('fuel_type', 'بنزين')
-        source = request.form.get('source', 'كازية')
-        payment_status = request.form.get('payment_status', '')
-        liters = request.form.get('liters') or None
-        price = request.form.get('price_per_liter') or None
-        total = request.form.get('total_cost') or None
-        final = request.form.get('final_cost') or None
-        km = request.form.get('km_at_fill') or None
-        notes = request.form.get('notes', '')
+        fuel_date = request.form.get('fuel_date') or req['fuel_date']; car_id = request.form.get('car_id'); driver_id = request.form.get('driver_id') or None
+        fuel_type = request.form.get('fuel_type', 'بنزين'); source = request.form.get('source', 'كازية'); payment_status = request.form.get('payment_status', '')
+        liters = request.form.get('liters') or None; price = request.form.get('price_per_liter') or None; total = request.form.get('total_cost') or None
+        final = request.form.get('final_cost') or None; km = request.form.get('km_at_fill') or None; notes = request.form.get('notes', '')
         
-        execute_query(cursor, """
-            INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes, car_image, station_image)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, req.get('car_image'), req.get('station_image')))
+        execute_query(cursor, """INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes, car_image, station_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, req.get('car_image'), req.get('station_image')))
         execute_query(cursor, "UPDATE pending_fuel SET status='approved' WHERE id=?", (req_id,))
-        conn.commit()
-        flash('تمت الموافقة وإدخال التعبئة في النظام بنجاح', 'success')
+        conn.commit(); flash('تمت الموافقة وإدخال التعبئة في النظام بنجاح', 'success')
     else: flash('الطلب غير موجود', 'error')
-    conn.close()
-    return redirect(url_for('admin_pending_fuel'))
+    conn.close(); return redirect(url_for('admin_pending_fuel'))
 
 @app.route('/admin/pending_fuel/reject/<int:req_id>')
 @admin_required
 def reject_pending_fuel(req_id):
-    conn = get_connection()
-    cursor = conn.cursor()
+    conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "UPDATE pending_fuel SET status='rejected' WHERE id=?", (req_id,))
-    conn.commit()
-    conn.close()
-    flash('تم رفض الطلب', 'success')
-    return redirect(url_for('admin_pending_fuel'))
+    conn.commit(); conn.close(); flash('تم رفض الطلب', 'success'); return redirect(url_for('admin_pending_fuel'))
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print("=" * 60)
-    print(f"  قاعدة البيانات: {'PostgreSQL (Supabase)' if is_postgres() else 'SQLite (محلي)'}")
-    print(f"  Driver App:  http://localhost:{port}/driver")
-    print(f"  Dashboard:   http://localhost:{port}/")
+    print("=" * 60); print(f"  Database: {'PostgreSQL' if is_postgres() else 'SQLite'}")
     print("=" * 60)
     app.run(host='0.0.0.0', port=port, debug=False)
