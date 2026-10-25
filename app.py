@@ -58,7 +58,8 @@ def upload_image_to_supabase(filename, img_data):
         headers = {'Authorization': f'Bearer {SUPABASE_SECRET_KEY}', 'Content-Type': 'image/jpeg', 'x-upsert': 'true'}
         response = requests.post(url, headers=headers, data=img_data, timeout=30)
         return filename if response.status_code in (200, 201) else None
-    except Exception:
+    except Exception as e:
+        print(f"⚠ خطأ في رفع الصورة لـ Supabase: {e}")
         return None
 
 def delete_image_from_supabase(filename):
@@ -279,7 +280,6 @@ def get_busy_car_ids(conn=None):
     cursor = conn.cursor(); execute_query(cursor, "SELECT DISTINCT car_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'"); rows = cursor.fetchall()
     if close_conn: conn.close()
     return {row['car_id'] for row in rows}
-
 # ============== دوال إنشاء الجداول ==============
 def ensure_daily_checks_table():
     try:
@@ -395,6 +395,7 @@ def ensure_all_tables():
         conn.commit(); conn.close(); return True
     except Exception as e: print(f"⚠ خطأ في ensure_all: {e}"); return False
 
+# ============== استدعاء إنشاء الجداول ==============
 ensure_all_tables()
 ensure_daily_checks_table()
 ensure_trips_columns()
@@ -405,28 +406,45 @@ ensure_fuel_columns()
 
 # ============== دوال الذكاء الاصطناعي وتلغرام ==============
 def send_telegram_message(chat_id, text):
-    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == 'ضع_توكن_البوت_هنا': return
+    if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == 'ضع_توكن_البوت_هنا': 
+        print("⚠ لم يتم إرسال رسالة تلغرام: التوكن غير مضبوط")
+        return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    try: requests.post(url, json={'chat_id': chat_id, 'text': text}, timeout=10)
-    except: pass
+    try: 
+        res = requests.post(url, json={'chat_id': chat_id, 'text': text}, timeout=10)
+        if res.status_code != 200:
+            print(f"⚠ فشل إرسال رسالة تلغرام: {res.text}")
+    except Exception as e: 
+        print(f"⚠ خطأ في الاتصال بتلغرام: {e}")
 
-def extract_data_from_images(car_img_b64):
-    if not GEMINI_API_KEY or GEMINI_API_KEY == 'ضع_مفتاح_جيميني_هنا': return {'km': None, 'liters': None, 'error': 'no key'}
+def extract_data_from_images(car_img_b64=None, station_img_b64=None):
+    """يقرأ الصور باستخدام Gemini ويستخرج العداد واللترات"""
+    if not GEMINI_API_KEY or GEMINI_API_KEY == 'ضع_مفتاح_جيميني_هنا': 
+        return {'km': None, 'liters': None, 'error': 'no key'}
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        parts = ["أنت مساعد خبير لقراءة عدادات السيارات. المطلوب منك هو قراءة الرقم الموجود في شاشة العداد (Odometer)."]
+        contents = ["أنت مساعد خبير لقراءة عدادات السيارات وفواتير الوقود. المطلوب منك استخراج أرقام دقيقة."]
+        
         if car_img_b64:
             data = car_img_b64.split(',')[1] if ',' in car_img_b64 else car_img_b64
-            parts.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
-            parts.append("هذه صورة عداد. استخرج الرقم الظاهر كقراءة للعداد كرقم صحيح (مثال: 51756). إذا كانت صورة عداد كازية استخرج عدد اللترات.")
-        parts.append("الرجاء إرجاع النتيجة بصيغة JSON فقط كالتالي: {\"km\": 51756, \"liters\": null}")
-        response = client.models.generate_content(model='gemini-1.5-flash', contents=parts)
+            contents.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
+            contents.append("هذه صورة عداد السيارة (Odometer). استخرج قراءة العداد بالكيلومترات كرقم صحيح.")
+            
+        if station_img_b64:
+            data = station_img_b64.split(',')[1] if ',' in station_img_b64 else station_img_b64
+            contents.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
+            contents.append("هذه صورة عداد الكازية. استخرج عدد اللترات (Liters) كرقم عشري.")
+            
+        contents.append("الرجاء إرجاع النتيجة بصيغة JSON فقط كالتالي: {\"km\": 51756, \"liters\": 40.5}. إذا لم تجد أحد الرقمين اجعله null.")
+        
+        response = client.models.generate_content(model='gemini-1.5-flash', contents=contents)
         text = response.text.replace('```json', '').replace('```', '').strip()
         data = json.loads(text)
         return {'km': data.get('km'), 'liters': data.get('liters'), 'error': None}
     except Exception as e:
         print(f"⚠ خطأ في OCR: {e}")
         return {'km': None, 'liters': None, 'error': str(e)}
+
 # ============== Context Processor ==============
 @app.context_processor
 def inject_permissions():
@@ -439,7 +457,6 @@ def inject_permissions():
             conn.close()
         except: pass
     return {'is_admin': is_admin(), 'is_viewer': is_viewer(), 'pending_fuel_count': pending_fuel_count}
-
 # ============== المسارات الأساسية ==============
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -628,6 +645,7 @@ def delete_trip(trip_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM trips WHERE id=?", (trip_id,)); conn.commit(); conn.close()
     flash('تم حذف الرحلة', 'success'); return redirect(url_for('index'))
+
 @app.route('/cars')
 @login_required
 def cars():
@@ -769,7 +787,6 @@ def daily_check_delete(check_id):
         flash('تم حذف الفحص اليومي بنجاح', 'success')
     except Exception as e: flash(f'خطأ في الحذف: {str(e)}', 'error')
     return redirect(url_for('daily_checks_list'))
-
 @app.route('/drivers')
 @login_required
 def drivers():
@@ -863,6 +880,7 @@ def delete_overtime(o_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "DELETE FROM overtime WHERE id=?", (o_id,)); conn.commit(); conn.close()
     flash('تم حذف الإضافي', 'success'); return redirect(url_for('drivers'))
+
 @app.route('/fuel')
 @login_required
 def fuel():
@@ -1531,27 +1549,48 @@ def telegram_webhook():
     data = request.get_json()
     if 'message' in data:
         chat_id = data['message']['chat']['id']; text = data['message'].get('text', ''); photos = data['message'].get('photo', [])
+        
         if photos:
-            file_id = photos[-1]['file_id']; file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}"
+            # في تلغرام، عندما يرسل المستخدم صورة، يتم إرسالها غالباً كألبوم (صور متعددة) أو صورة واحدة.
+            # هنا نفترض أنه يرسل صورة واحدة في كل مرة. لتجنب التعقيد، سنأخذ أعلى جودة للصورة المرسلة.
+            file_id = photos[-1]['file_id']
+            file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}"
+            
             try:
-                file_info = requests.get(file_info_url).json(); file_path = file_info['result']['file_path']
-                img_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"; img_data = requests.get(img_url).content
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); filename = f"tg_fuel_{chat_id}_{timestamp}.jpg"
+                file_info = requests.get(file_info_url).json()
+                file_path = file_info['result']['file_path']
+                img_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
+                img_data = requests.get(img_url).content
                 
-                # التعديل: نرفع الصورة إلى Supabase مباشرة
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                filename = f"tg_fuel_{chat_id}_{timestamp}.jpg"
+                
+                # رفع الصورة إلى Supabase (أو حفظها محلياً)
                 uploaded_filename = upload_image_to_supabase(filename, img_data)
                 if not uploaded_filename:
-                    send_telegram_message(chat_id, "❌ فشل رفع الصورة إلى التخزين السحابي.")
-                    return jsonify({'status': 'error'})
-                filename = uploaded_filename
+                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                    with open(filepath, 'wb') as f: f.write(img_data)
+                    uploaded_filename = filename
 
-                img_b64 = base64.b64encode(img_data).decode('utf-8'); extracted = extract_data_from_images(img_b64)
-                conn = get_connection(); cursor = conn.cursor(); now = datetime.now() + timedelta(hours=3)
-                execute_query(cursor, """INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image) VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?)""", (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورة عداد مرسلة من تلغرام. النص: {text}", filename))
+                img_b64 = base64.b64encode(img_data).decode('utf-8')
+                extracted = extract_data_from_images(car_img_b64=img_b64, station_img_b64=None)
+                
+                conn = get_connection(); cursor = conn.cursor()
+                now = datetime.now() + timedelta(hours=3)
+                
+                # حفظ في جدول الانتظار
+                execute_query(cursor, """
+                    INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image) 
+                    VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورة مرسلة من تلغرام. النص: {text}", uploaded_filename))
                 conn.commit(); conn.close()
-                send_telegram_message(chat_id, "✅ تم استلام الصورة وحفظها كطلب تعبئة معلق. بانتظار مراجعة الإدارة.")
-            except Exception as e: send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
-        elif text: send_telegram_message(chat_id, "ℹ️ تم استلام رسالتك. يرجى إرسال الصور فقط، وسيقوم المسؤول بإدخال البيانات.")
+                
+                send_telegram_message(chat_id, f"✅ تم استلام الصورة. العداد المقروء: {extracted.get('km') or 'غير واضح'}. اللترات: {extracted.get('liters') or 'غير واضحة'}. بانتظار مراجعة الإدارة.")
+            except Exception as e:
+                send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
+        elif text:
+            send_telegram_message(chat_id, "ℹ️ يرجى إرسال صور العدادات (السيارة والكازية) ليقوم النظام بقراءتها.")
+            
     return jsonify({'status': 'ok'})
 
 @app.route('/admin/pending_fuel')
@@ -1570,12 +1609,17 @@ def approve_pending_fuel(req_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM pending_fuel WHERE id=?", (req_id,)); req = cursor.fetchone()
     if req:
+        # استخراج البيانات من النموذج
         fuel_date = request.form.get('fuel_date') or req['fuel_date']; car_id = request.form.get('car_id'); driver_id = request.form.get('driver_id') or None
         fuel_type = request.form.get('fuel_type', 'بنزين'); source = request.form.get('source', 'كازية'); payment_status = request.form.get('payment_status', '')
         liters = request.form.get('liters') or None; price = request.form.get('price_per_liter') or None; total = request.form.get('total_cost') or None
         final = request.form.get('final_cost') or None; km = request.form.get('km_at_fill') or None; notes = request.form.get('notes', '')
         
-        execute_query(cursor, """INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes, car_image, station_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, req.get('car_image'), req.get('station_image')))
+        # استخراج الصور بطريقة آمنة (تدعم sqlite3.Row و RealDictRow)
+        car_image = req['car_image'] if 'car_image' in req.keys() else None
+        station_image = req['station_image'] if 'station_image' in req.keys() else None
+
+        execute_query(cursor, """INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes, car_image, station_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, car_image, station_image))
         execute_query(cursor, "UPDATE pending_fuel SET status='approved' WHERE id=?", (req_id,))
         conn.commit(); flash('تمت الموافقة وإدخال التعبئة في النظام بنجاح', 'success')
     else: flash('الطلب غير موجود', 'error')
