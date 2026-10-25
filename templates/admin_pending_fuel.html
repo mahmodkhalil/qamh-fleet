@@ -17,12 +17,21 @@
                         اللترات: {{ pf.liters or 'غير واضح' }}
                     </p>
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <div style="display:flex; gap:15px; flex-wrap:wrap;">
                     {% if pf.car_image %}
-                    <div>
-                        <p style="font-size:12px; margin-bottom:5px;">صورة العداد:</p>
+                    <div style="text-align:center;">
+                        <p style="font-size:12px; margin-bottom:5px; font-weight:bold;">📸 صورة العداد:</p>
                         <a href="/uploads/{{ pf.car_image }}" target="_blank">
-                            <img src="/uploads/{{ pf.car_image }}" style="max-width:150px; border-radius:6px; border:2px solid #1e3a5f;">
+                            <img src="/uploads/{{ pf.car_image }}" style="max-width:150px; border-radius:6px; border:2px solid #1e3a5f; cursor:pointer;">
+                        </a>
+                    </div>
+                    {% endif %}
+                    
+                    {% if pf.station_image %}
+                    <div style="text-align:center;">
+                        <p style="font-size:12px; margin-bottom:5px; font-weight:bold;">⛽ صورة الكازية:</p>
+                        <a href="/uploads/{{ pf.station_image }}" target="_blank">
+                            <img src="/uploads/{{ pf.station_image }}" style="max-width:150px; border-radius:6px; border:2px solid #28a745; cursor:pointer;">
                         </a>
                     </div>
                     {% endif %}
@@ -116,8 +125,8 @@
                 </div>
 
                 <div style="display:flex; gap:10px;">
-                    <button type="submit" class="btn btn-success" style="flex:1;">✅ موافقة وإدخال للنظام</button>
-                    <a href="/admin/pending_fuel/reject/{{ pf.id }}" class="btn btn-danger" style="flex:1;" onclick="return confirm('رفض الطلب؟')">❌ رفض</a>
+                    <button type="submit" class="btn btn-success" style="flex:1; padding: 10px; font-weight: bold;">✅ موافقة وإدخال للنظام</button>
+                    <a href="/admin/pending_fuel/reject/{{ pf.id }}" class="btn btn-danger" style="flex:1; padding: 10px; font-weight: bold; text-align: center;" onclick="return confirm('رفض الطلب؟')">❌ رفض</a>
                 </div>
             </form>
         </div>
