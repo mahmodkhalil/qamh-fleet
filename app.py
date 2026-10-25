@@ -14,14 +14,12 @@ from openpyxl.styles import Font, Alignment, PatternFill
 import requests
 from google import genai
 
-# ============== اتصال قاعدة البيانات ==============
 try:
     import psycopg2
     from psycopg2.extras import RealDictCursor
     HAS_POSTGRES = True
 except ImportError:
     HAS_POSTGRES = False
-    print("⚠ psycopg2 غير مثبت. سيتم استخدام SQLite فقط.")
 
 app = Flask(__name__)
 app.secret_key = 'qamh_fleet_secret_2026'
@@ -38,10 +36,8 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
-# ============== إعدادات البوت والذكاء الاصطناعي ==============
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ضع_توكن_البوت_هنا')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'ضع_مفتاح_جيميني_هنا')
-
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_SECRET_KEY = os.environ.get('SUPABASE_SECRET_KEY', '')
 SUPABASE_BUCKET = 'qamh-images'
@@ -53,7 +49,7 @@ def upload_image_to_supabase(filename, img_data):
         headers = {'Authorization': f'Bearer {SUPABASE_SECRET_KEY}', 'Content-Type': 'image/jpeg', 'x-upsert': 'true'}
         response = requests.post(url, headers=headers, data=img_data, timeout=30)
         return filename if response.status_code in (200, 201) else None
-    except Exception as e: print(f"⚠ خطأ في رفع الصورة لـ Supabase: {e}"); return None
+    except Exception as e: print(f"⚠ خطأ في رفع الصورة: {e}"); return None
 
 def delete_image_from_supabase(filename):
     if not filename or not SUPABASE_URL or not SUPABASE_SECRET_KEY: return False
@@ -86,7 +82,6 @@ def get_connection():
         conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row; return conn
 
 def is_postgres(): return DATABASE_URL is not None
-
 def execute_query(cursor, query, params=()):
     if is_postgres(): query = query.replace('?', '%s')
     cursor.execute(query, params); return cursor
@@ -108,7 +103,6 @@ def admin_required(f):
             flash('هذا الإجراء متاح للمسؤول فقط', 'error'); return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated_function
-
 def get_car_current_km(car_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT MAX(end_km) as max_km FROM trips WHERE car_id=? AND end_km IS NOT NULL", (car_id,)); row = cursor.fetchone(); trip_km = row['max_km'] if row else None
@@ -260,7 +254,8 @@ def get_busy_car_ids(conn=None):
     cursor = conn.cursor(); execute_query(cursor, "SELECT DISTINCT car_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'"); rows = cursor.fetchall()
     if close_conn: conn.close()
     return {row['car_id'] for row in rows}
-    # ============== دوال إنشاء الجداول ==============
+
+# ============== دوال إنشاء الجداول ==============
 def ensure_daily_checks_table():
     try:
         conn = get_connection(); cursor = conn.cursor()
@@ -375,7 +370,6 @@ def ensure_all_tables():
         conn.commit(); conn.close(); return True
     except Exception as e: print(f"⚠ خطأ في ensure_all: {e}"); return False
 
-# ============== استدعاء إنشاء الجداول ==============
 ensure_all_tables()
 ensure_daily_checks_table()
 ensure_trips_columns()
@@ -384,7 +378,6 @@ ensure_pending_fuel_table()
 migrate_requesting_parties()
 ensure_fuel_columns()
 
-# ============== دوال الذكاء الاصطناعي وتلغرام ==============
 def send_telegram_message(chat_id, text):
     if not TELEGRAM_TOKEN or TELEGRAM_TOKEN == 'ضع_توكن_البوت_هنا': 
         print("⚠ لم يتم إرسال رسالة تلغرام: التوكن غير مضبوط"); return
@@ -424,7 +417,7 @@ def inject_permissions():
             pending_fuel_count = cursor.fetchone()['cnt']; conn.close()
         except: pass
     return {'is_admin': is_admin(), 'is_viewer': is_viewer(), 'pending_fuel_count': pending_fuel_count}
-    # ============== المسارات الأساسية ==============
+# ============== المسارات الأساسية ==============
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -704,7 +697,6 @@ def toggle_requesting_party(party_id):
     new_active = 0 if row['active'] == 1 else 1
     execute_query(cursor, "UPDATE requesting_parties SET active=? WHERE id=?", (new_active, party_id)); conn.commit(); conn.close()
     flash('تم تحديث حالة الجهة', 'success'); return redirect(url_for('requesting_parties'))
-
 @app.route('/daily_checks')
 @login_required
 def daily_checks_list():
@@ -754,7 +746,8 @@ def daily_check_delete(check_id):
         flash('تم حذف الفحص اليومي بنجاح', 'success')
     except Exception as e: flash(f'خطأ في الحذف: {str(e)}', 'error')
     return redirect(url_for('daily_checks_list'))
-    @app.route('/drivers')
+
+@app.route('/drivers')
 @login_required
 def drivers():
     conn = get_connection(); cursor = conn.cursor()
@@ -955,7 +948,7 @@ def uploaded_file(filename):
         except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-    # ============== التقارير ==============
+# ============== التقارير ==============
 @app.route('/reports')
 @login_required
 def reports():
@@ -1113,7 +1106,7 @@ def export_fuel_excel():
         ws.append([f['fuel_date'], f['car_name'], f['driver_name'], f['liters'] or 0, get_effective_cost(f)])
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='fuel_report.xlsx')
-    # ============== Driver App API ==============
+# ============== Driver App API ==============
 @app.route('/driver')
 def driver_app(): return render_template('driver_app.html')
 
@@ -1273,7 +1266,7 @@ def api_driver_pending_count(driver_id):
         count = cursor.fetchone()['cnt']; conn.close()
         return jsonify({'success': True, 'count': count})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-        # ============== Telegram Webhook & Pending Fuel ==============
+# ============== Telegram Webhook & Pending Fuel ==============
 telegram_pending_photos = {}
 
 @app.route('/telegram_webhook', methods=['POST'])
