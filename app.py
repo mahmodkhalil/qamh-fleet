@@ -623,16 +623,14 @@ def extract_data_from_images(car_img_b64, station_img_b64):
         return {'km': None, 'liters': None, 'error': 'مفتاح API غير مضبوط'}
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
-        parts = ["أنت مساعد لقراءة عدادات السيارات وفواتير الوقود. استخرج الأرقام المطلوبة بدقة."]
+        parts = ["أنت مساعد خبير لقراءة عدادات السيارات. المطلوب منك هو قراءة الرقم الموجود في شاشة العداد (Odometer)."]
+        
         if car_img_b64:
             data = car_img_b64.split(',')[1] if ',' in car_img_b64 else car_img_b64
             parts.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
-            parts.append("هذه صورة عداد السيارة. استخرج قراءة العداد.")
-        if station_img_b64:
-            data = station_img_b64.split(',')[1] if ',' in station_img_b64 else station_img_b64
-            parts.append({"mime_type": "image/jpeg", "data": base64.b64decode(data)})
-            parts.append("هذه صورة عداد الكازية. استخرج عدد اللترات.")
-        parts.append("أرجع النتيجة بصيغة JSON فقط: {\"km\": 12345, \"liters\": 40.5}")
+            parts.append("هذه صورة عداد السيارة. استخرج قراءة العداد كرقم صحيح (مثال: 51756).")
+        
+        parts.append("الرجاء إرجاع النتيجة بصيغة JSON فقط كالتالي: {\"km\": 51756, \"liters\": null}")
         
         response = client.models.generate_content(
             model='gemini-1.5-flash',
@@ -2411,7 +2409,9 @@ def telegram_webhook():
                 
         elif text:
             try:
-                parts = text.split()
+                # تنظيف النص من الأقواس والرموز الزائدة
+                clean_text = text.replace('[', '').replace(']', '').strip()
+                parts = clean_text.split()
                 if len(parts) >= 3:
                     car_name = parts[0]
                     liters = float(parts[1])
