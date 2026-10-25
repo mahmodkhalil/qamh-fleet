@@ -26,21 +26,19 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = 'qamh_fleet_secret_2026'
 
-# ============== مسار البيانات ==============
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(DATA_DIR, 'qamh_fleet.db')
 UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
 PASSWORDS_FILE = os.path.join(DATA_DIR, 'passwords.json')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-
 DATABASE_URL = os.environ.get('DATABASE_URL')
-
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
 if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
+# ============== إعدادات البوت والذكاء الاصطناعي ==============
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ضع_توكن_البوت_هنا')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'ضع_مفتاح_جيميني_هنا')
 
@@ -955,6 +953,7 @@ def uploaded_file(filename):
         except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+# ============== التقارير ==============
 @app.route('/reports')
 @login_required
 def reports():
@@ -975,22 +974,21 @@ def reports():
         total_maint_usd = sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار')
         report_data = {'summary': {'total_trips': total_trips, 'total_km': total_km, 'total_liters': total_liters, 'total_fuel_cost': total_fuel_cost, 'total_maint_cost_syp': total_maint_syp, 'total_maint_cost_usd': total_maint_usd}}
     conn.close()
-    return render_template('reports.html', cars=cars_list, drivers=drivers_list, parties=parties_list, years=years, selected_month=month, selected_year=year, report_data=report_data, selected_car='', selected_driver='', selected_party='', report_type='all', payment_filter='')
+    return render_template('reports.html', cars=cars_list, drivers=drivers_list, parties=parties_list, years=years, selected_month=month, selected_year=year, report_data=report_data)
 
 @app.route('/reports/trips')
 @login_required
 def reports_trips():
-    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''; requesting_party_id = request.args.get('requesting_party_id') or ''
+    car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''
     date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM drivers ORDER BY name"); drivers_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM requesting_parties ORDER BY name"); parties_list = cursor.fetchall()
-    query = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE 1=1"
+    query = "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE 1=1"
     params = []
     if car_id: query += " AND t.car_id = ?"; params.append(car_id)
     if driver_id: query += " AND t.driver_id = ?"; params.append(driver_id)
-    if requesting_party_id: query += " AND t.requesting_party_id = ?"; params.append(requesting_party_id)
     if date_from: query += " AND t.trip_date >= ?"; params.append(date_from)
     if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
     query += " ORDER BY t.trip_date DESC, t.id DESC"
@@ -998,7 +996,7 @@ def reports_trips():
     total_trips = len(trips); total_km = sum(t['distance'] or 0 for t in trips)
     conn.close()
     summary = {'total_trips': total_trips, 'total_km': total_km}
-    return render_template('reports_trips.html', cars=cars_list, drivers=drivers_list, parties=parties_list, trips=trips, summary=summary, selected_car=car_id, selected_driver=driver_id, selected_party=requesting_party_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or requesting_party_id or date_from or date_to))
+    return render_template('reports_trips.html', cars=cars_list, drivers=drivers_list, parties=parties_list, trips=trips, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or date_from or date_to))
 
 @app.route('/reports/fuel')
 @login_required
