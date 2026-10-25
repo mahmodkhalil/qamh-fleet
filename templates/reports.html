@@ -5,13 +5,18 @@
     <h2>📊 التقارير الشهرية</h2>
     <form method="GET" action="/reports" style="margin-bottom:25px; padding:20px; background:#f7fafc; border-radius:8px;">
         <div class="form-row-3">
-            <div class="form-group"><label>الشهر</label><select name="month">{% for m in range(1,13) %}<option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></div>
-            <div class="form-group"><label>السنة</label><select name="year">{% for y in years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select></div>
+            <div class="form-group"><label>الشهر</label>
+                <select name="month">{% for m in range(1,13) %}<option value="{{ m }}" {% if m == selected_month %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
+            </div>
+            <div class="form-group"><label>السنة</label>
+                <select name="year">{% for y in years %}<option value="{{ y }}" {% if y == selected_year %}selected{% endif %}>{{ y }}</option>{% endfor %}</select>
+            </div>
             <div class="form-group"><label>&nbsp;</label><button type="submit" class="btn btn-primary" style="width:100%;">🔍 عرض</button></div>
         </div>
         <a href="/reports/export?month={{ selected_month }}&year={{ selected_year }}" class="btn btn-success">📥 تصدير Excel</a>
     </form>
 </div>
+
 {% if report_data %}
 <div class="stats-grid">
     <div class="stat-box"><div class="number">{{ report_data.summary.total_trips }}</div><div class="label">إجمالي الرحلات</div></div>
