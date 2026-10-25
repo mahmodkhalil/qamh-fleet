@@ -260,7 +260,8 @@ def get_busy_car_ids(conn=None):
     cursor = conn.cursor(); execute_query(cursor, "SELECT DISTINCT car_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'"); rows = cursor.fetchall()
     if close_conn: conn.close()
     return {row['car_id'] for row in rows}
-    # ============== دوال إنشاء الجداول ==============
+
+# ============== دوال إنشاء الجداول ==============
 def ensure_daily_checks_table():
     try:
         conn = get_connection(); cursor = conn.cursor()
@@ -424,7 +425,8 @@ def inject_permissions():
             pending_fuel_count = cursor.fetchone()['cnt']; conn.close()
         except: pass
     return {'is_admin': is_admin(), 'is_viewer': is_viewer(), 'pending_fuel_count': pending_fuel_count}
-    # ============== المسارات الأساسية ==============
+
+# ============== المسارات الأساسية ==============
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
