@@ -260,7 +260,7 @@ def get_busy_car_ids(conn=None):
     cursor = conn.cursor(); execute_query(cursor, "SELECT DISTINCT car_id FROM trips WHERE end_km IS NULL AND trip_source = 'driver_app'"); rows = cursor.fetchall()
     if close_conn: conn.close()
     return {row['car_id'] for row in rows}
-# ============== دوال إنشاء الجداول ==============
+    # ============== دوال إنشاء الجداول ==============
 def ensure_daily_checks_table():
     try:
         conn = get_connection(); cursor = conn.cursor()
@@ -424,7 +424,7 @@ def inject_permissions():
             pending_fuel_count = cursor.fetchone()['cnt']; conn.close()
         except: pass
     return {'is_admin': is_admin(), 'is_viewer': is_viewer(), 'pending_fuel_count': pending_fuel_count}
-# ============== المسارات الأساسية ==============
+    # ============== المسارات الأساسية ==============
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -754,7 +754,7 @@ def daily_check_delete(check_id):
         flash('تم حذف الفحص اليومي بنجاح', 'success')
     except Exception as e: flash(f'خطأ في الحذف: {str(e)}', 'error')
     return redirect(url_for('daily_checks_list'))
-@app.route('/drivers')
+    @app.route('/drivers')
 @login_required
 def drivers():
     conn = get_connection(); cursor = conn.cursor()
@@ -955,7 +955,7 @@ def uploaded_file(filename):
         except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-# ============== التقارير ==============
+    # ============== التقارير ==============
 @app.route('/reports')
 @login_required
 def reports():
@@ -1038,8 +1038,10 @@ def export_excel():
     execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
     conn.close()
 
-    wb = Workbook(); ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
+    wb = Workbook()
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
+
+    ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
     ws_sum.append(['التقرير الشهري الشامل', month_str]); ws_sum.append([]); ws_sum.append(['الإحصائية', 'القيمة'])
     ws_sum.append(['إجمالي الرحلات', len(trips)]); ws_sum.append(['إجمالي الكيلومترات', sum(t['distance'] or 0 for t in trips)])
     ws_sum.append(['إجمالي اللترات', sum(f['liters'] or 0 for f in fuels)]); ws_sum.append(['إجمالي كلفة الوقود', sum(get_effective_cost(f) for f in fuels)])
@@ -1057,6 +1059,10 @@ def export_excel():
         for f in c_fuel: ws_c.append(['', f['fuel_date'], f['liters'] or 0, get_effective_cost(f)])
         ws_c.append([]); ws_c.append(['الصيانة:', 'التاريخ', 'النوع', 'التكلفة', 'العملة'])
         for m in c_maint: ws_c.append(['', m['date'], m['type'], m['cost'] or 0, m.get('currency', 'ل.س')])
+
+    ws3 = wb.create_sheet(f"تفاصيل الرحلات"); ws3.sheet_view.rightToLeft = True
+    ws3.append(['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)', 'ملاحظات'])
+    for t in trips: ws3.append([t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '', t['distance'] or 0, t['notes'] or ''])
 
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_report_{month_str}.xlsx')
@@ -1107,7 +1113,7 @@ def export_fuel_excel():
         ws.append([f['fuel_date'], f['car_name'], f['driver_name'], f['liters'] or 0, get_effective_cost(f)])
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='fuel_report.xlsx')
-# ============== Driver App API ==============
+    # ============== Driver App API ==============
 @app.route('/driver')
 def driver_app(): return render_template('driver_app.html')
 
@@ -1267,7 +1273,7 @@ def api_driver_pending_count(driver_id):
         count = cursor.fetchone()['cnt']; conn.close()
         return jsonify({'success': True, 'count': count})
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-# ============== Telegram Webhook & Pending Fuel ==============
+        # ============== Telegram Webhook & Pending Fuel ==============
 telegram_pending_photos = {}
 
 @app.route('/telegram_webhook', methods=['POST'])
