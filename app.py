@@ -1544,6 +1544,9 @@ def api_driver_pending_count(driver_id):
     except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
 
 # ============== Telegram Webhook & Pending Fuel ==============
+# خزنة مؤقتة لحفظ الصور حتى يرسل السائق الصورتين
+telegram_pending_photos = {}
+
 @app.route('/telegram_webhook', methods=['POST'])
 def telegram_webhook():
     data = request.get_json()
@@ -1551,8 +1554,7 @@ def telegram_webhook():
         chat_id = data['message']['chat']['id']; text = data['message'].get('text', ''); photos = data['message'].get('photo', [])
         
         if photos:
-            # في تلغرام، عندما يرسل المستخدم صورة، يتم إرسالها غالباً كألبوم (صور متعددة) أو صورة واحدة.
-            # هنا نفترض أنه يرسل صورة واحدة في كل مرة. لتجنب التعقيد، سنأخذ أعلى جودة للصورة المرسلة.
+            # تحميل الصورة
             file_id = photos[-1]['file_id']
             file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}"
             
@@ -1565,7 +1567,6 @@ def telegram_webhook():
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 filename = f"tg_fuel_{chat_id}_{timestamp}.jpg"
                 
-                # رفع الصورة إلى Supabase (أو حفظها محلياً)
                 uploaded_filename = upload_image_to_supabase(filename, img_data)
                 if not uploaded_filename:
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
@@ -1573,23 +1574,44 @@ def telegram_webhook():
                     uploaded_filename = filename
 
                 img_b64 = base64.b64encode(img_data).decode('utf-8')
-                extracted = extract_data_from_images(car_img_b64=img_b64, station_img_b64=None)
                 
-                conn = get_connection(); cursor = conn.cursor()
-                now = datetime.now() + timedelta(hours=3)
-                
-                # حفظ في جدول الانتظار
-                execute_query(cursor, """
-                    INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image) 
-                    VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?)
-                """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورة مرسلة من تلغرام. النص: {text}", uploaded_filename))
-                conn.commit(); conn.close()
-                
-                send_telegram_message(chat_id, f"✅ تم استلام الصورة. العداد المقروء: {extracted.get('km') or 'غير واضح'}. اللترات: {extracted.get('liters') or 'غير واضحة'}. بانتظار مراجعة الإدارة.")
+                # التحقق من الخزنة المؤقتة
+                if chat_id not in telegram_pending_photos:
+                    # هذه أول صورة (عداد السيارة)
+                    telegram_pending_photos[chat_id] = {
+                        'car_image': uploaded_filename,
+                        'car_b64': img_b64,
+                        'station_image': None,
+                        'station_b64': None,
+                        'text': text
+                    }
+                    send_telegram_message(chat_id, "✅ تم استلام صورة عداد السيارة. يرجى إرسال صورة عداد الكازية الآن لإكمال الطلب.")
+                else:
+                    # هذه ثاني صورة (عداد الكازية)
+                    telegram_pending_photos[chat_id]['station_image'] = uploaded_filename
+                    telegram_pending_photos[chat_id]['station_b64'] = img_b64
+                    
+                    # الآن نرسل الصورتين معاً للذكاء الاصطناعي
+                    session = telegram_pending_photos[chat_id]
+                    extracted = extract_data_from_images(car_img_b64=session['car_b64'], station_img_b64=session['station_b64'])
+                    
+                    conn = get_connection(); cursor = conn.cursor()
+                    now = datetime.now() + timedelta(hours=3)
+                    
+                    execute_query(cursor, """
+                        INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) 
+                        VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+                    """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورتين مرسلتين من تلغرام. النص: {text}", session['car_image'], session['station_image']))
+                    conn.commit(); conn.close()
+                    
+                    # مسح الخزنة المؤقتة
+                    del telegram_pending_photos[chat_id]
+                    
+                    send_telegram_message(chat_id, f"✅ تم استلام الصورتين بنجاح! العداد المقروء: {extracted.get('km') or 'غير واضح'}. اللترات: {extracted.get('liters') or 'غير واضحة'}. بانتظار مراجعة الإدارة.")
             except Exception as e:
                 send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
         elif text:
-            send_telegram_message(chat_id, "ℹ️ يرجى إرسال صور العدادات (السيارة والكازية) ليقوم النظام بقراءتها.")
+            send_telegram_message(chat_id, "ℹ️ يرجى إرسال صورة عداد السيارة أولاً، ثم صورة عداد الكازية.")
             
     return jsonify({'status': 'ok'})
 
@@ -1609,13 +1631,11 @@ def approve_pending_fuel(req_id):
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM pending_fuel WHERE id=?", (req_id,)); req = cursor.fetchone()
     if req:
-        # استخراج البيانات من النموذج
         fuel_date = request.form.get('fuel_date') or req['fuel_date']; car_id = request.form.get('car_id'); driver_id = request.form.get('driver_id') or None
         fuel_type = request.form.get('fuel_type', 'بنزين'); source = request.form.get('source', 'كازية'); payment_status = request.form.get('payment_status', '')
         liters = request.form.get('liters') or None; price = request.form.get('price_per_liter') or None; total = request.form.get('total_cost') or None
         final = request.form.get('final_cost') or None; km = request.form.get('km_at_fill') or None; notes = request.form.get('notes', '')
         
-        # استخراج الصور بطريقة آمنة (تدعم sqlite3.Row و RealDictRow)
         car_image = req['car_image'] if 'car_image' in req.keys() else None
         station_image = req['station_image'] if 'station_image' in req.keys() else None
 
