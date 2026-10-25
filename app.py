@@ -530,12 +530,12 @@ def ensure_pending_fuel_table():
             execute_query(cursor, """
                 CREATE TABLE IF NOT EXISTS pending_fuel (
                     id SERIAL PRIMARY KEY, driver_id INTEGER, car_id INTEGER,
-                    fuel_date TEXT NOT NULL, fuel_time TEXT, liters REAL, price_per_liter REAL,
-                    total_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT,
+                    fuel_date TEXT, fuel_time TEXT, liters REAL, price_per_liter REAL,
+                    total_cost REAL, final_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT,
                     notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT
                 )
             """)
-            cols = [('station_image', 'TEXT'), ('car_image', 'TEXT'), ('fuel_time', 'TEXT')]
+            cols = [('station_image', 'TEXT'), ('car_image', 'TEXT'), ('fuel_time', 'TEXT'), ('final_cost', 'REAL')]
             for col, typ in cols:
                 try: execute_query(cursor, f"ALTER TABLE pending_fuel ADD COLUMN IF NOT EXISTS {col} {typ}")
                 except: pass
@@ -543,14 +543,14 @@ def ensure_pending_fuel_table():
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS pending_fuel (
                     id INTEGER PRIMARY KEY AUTOINCREMENT, driver_id INTEGER, car_id INTEGER,
-                    fuel_date TEXT NOT NULL, fuel_time TEXT, liters REAL, price_per_liter REAL,
-                    total_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT,
+                    fuel_date TEXT, fuel_time TEXT, liters REAL, price_per_liter REAL,
+                    total_cost REAL, final_cost REAL, km_at_fill REAL, station_image TEXT, car_image TEXT,
                     notes TEXT, status TEXT DEFAULT 'pending', created_at TEXT
                 )
             """)
             cursor.execute("PRAGMA table_info(pending_fuel)")
             existing = {row[1] for row in cursor.fetchall()}
-            for col, typ in [('station_image', 'TEXT'), ('car_image', 'TEXT'), ('fuel_time', 'TEXT')]:
+            for col, typ in [('station_image', 'TEXT'), ('car_image', 'TEXT'), ('fuel_time', 'TEXT'), ('final_cost', 'REAL')]:
                 if col not in existing:
                     try: cursor.execute(f"ALTER TABLE pending_fuel ADD COLUMN {col} {typ}")
                     except: pass
@@ -643,6 +643,7 @@ def extract_data_from_images(car_img_b64):
     except Exception as e:
         print(f"⚠ خطأ في OCR: {e}")
         return {'km': None, 'liters': None, 'error': str(e)}
+
 # ============== Context Processor ==============
 @app.context_processor
 def inject_permissions():
@@ -657,7 +658,6 @@ def inject_permissions():
             conn.close()
         except: pass
     return {'is_admin': is_admin(), 'is_viewer': is_viewer(), 'pending_fuel_count': pending_fuel_count}
-
 # ============== المسارات الأساسية ==============
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -1543,6 +1543,7 @@ def uploaded_file(filename):
         except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
 # ============== التقارير الشهرية ==============
 @app.route('/reports')
 @login_required
@@ -2148,6 +2149,7 @@ def export_trips_excel():
     wb.save(output)
     output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='trips_report.xlsx')
+
 # ============== Driver App API ==============
 @app.route('/driver')
 def driver_app():
@@ -2406,6 +2408,7 @@ def telegram_webhook():
                 conn = get_connection()
                 cursor = conn.cursor()
                 now = datetime.now() + timedelta(hours=3)
+                # إدخال الصورة في جدول الطلبات المعلقة، وترك بيانات السيارة والسائق فارغة (NULL) لكي تملأها أنت لاحقاً
                 execute_query(cursor, """
                     INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image)
                     VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?)
@@ -2418,7 +2421,6 @@ def telegram_webhook():
                 send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
                 
         elif text:
-            # تم إلغاء استقبال النصوص من السائق لتجنب الأخطاء، البيانات يدخلها المسؤول
             send_telegram_message(chat_id, "ℹ️ تم استلام رسالتك. يرجى إرسال الصور فقط، وسيقوم المسؤول بإدخال البيانات.")
     return jsonify({'status': 'ok'})
 
