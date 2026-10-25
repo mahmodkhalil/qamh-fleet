@@ -59,7 +59,8 @@
             </div>
         </div>
         
-        <a href="/reports/fuel/export?car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&payment_filter={{ payment_filter or '' }}" class="btn btn-success">📥 تصدير Excel</a>
+        <!-- التعديل هنا: تم استخدام url_for بدلاً من الرابط الثابت -->
+        <a href="{{ url_for('export_fuel_excel', car_id=selected_car or '', driver_id=selected_driver or '', date_from=date_from or '', date_to=date_to or '', payment_filter=payment_filter or '') }}" class="btn btn-success">📥 تصدير Excel</a>
     </form>
 </div>
 
