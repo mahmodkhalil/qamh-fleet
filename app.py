@@ -1291,7 +1291,47 @@ def export_requesting_parties_excel():
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='requesting_parties_report.xlsx')
 # ============== Telegram Webhook & Pending Fuel ==============
+import threading
+import time
+
 telegram_pending_photos = {}
+telegram_timers = {}
+
+def finalize_fuel_request(chat_id):
+    """دالة تُنفذ بعد انتهاء المهلة لحفظ الطلب في قاعدة البيانات"""
+    if chat_id not in telegram_pending_photos:
+        return
+    
+    session = telegram_pending_photos[chat_id]
+    
+    # إذا لم تكن هناك صورة ثانية، نلغي العملية (ننتظر)
+    if not session.get('station_image'):
+        return
+        
+    extracted = extract_data_from_images(car_img_b64=session['car_b64'], station_img_b64=session['station_b64'])
+    
+    conn = get_connection(); cursor = conn.cursor()
+    now = datetime.now() + timedelta(hours=3)
+    
+    # ندمج النص الذي كتبه السائق مع ملاحظات البوت
+    final_notes = "صورتين مرسلتين من تلغرام."
+    if session.get('text'):
+        final_notes += f" ملاحظات السائق: {session['text']}"
+    
+    execute_query(cursor, """
+        INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) 
+        VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+    """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), final_notes, session['car_image'], session['station_image']))
+    conn.commit(); conn.close()
+    
+    # مسح الجلسة والمؤقت
+    if chat_id in telegram_pending_photos:
+        del telegram_pending_photos[chat_id]
+    if chat_id in telegram_timers:
+        del telegram_timers[chat_id]
+        
+    send_telegram_message(chat_id, f"✅ تم استلام الطلب بنجاح! العداد المقروء: {extracted.get('km') or 'غير واضح'}. اللترات: {extracted.get('liters') or 'غير واضحة'}. بانتظار مراجعة الإدارة.")
+
 
 @app.route('/telegram_webhook', methods=['POST'])
 def telegram_webhook():
@@ -1331,35 +1371,25 @@ def telegram_webhook():
                         'station_b64': None, 
                         'text': text  # نحفظ النص إن وجد
                     }
-                    send_telegram_message(chat_id, "✅ تم استلام صورة عداد السيارة. يرجى إرسال صورة عداد الكازية الآن لإكمال الطلب.")
+                    send_telegram_message(chat_id, "✅ تم استلام صورة عداد السيارة. يرجى إرسال صورة عداد الكازية الآن، ثم اكتب أي ملاحظات تريدها.")
                 else:
                     # استلام الصورة الثانية (عداد الكازية)
                     telegram_pending_photos[chat_id]['station_image'] = uploaded_filename
                     telegram_pending_photos[chat_id]['station_b64'] = img_b64
-                    # إذا كان هناك نص مرفق مع الصورة الثانية، نحدث النص
                     if text:
                         telegram_pending_photos[chat_id]['text'] = text
                     
-                    session = telegram_pending_photos[chat_id]
-                    extracted = extract_data_from_images(car_img_b64=session['car_b64'], station_img_b64=session['station_b64'])
+                    send_telegram_message(chat_id, "✅ تم استلام الصورة الثانية. إذا كان لديك أي ملاحظات، اكتبها الآن. سيتم حفظ الطلب تلقائياً بعد 20 ثانية.")
                     
-                    conn = get_connection(); cursor = conn.cursor()
-                    now = datetime.now() + timedelta(hours=3)
+                    # إلغاء أي مؤقت قديم إن وجد
+                    if chat_id in telegram_timers:
+                        telegram_timers[chat_id].cancel()
                     
-                    # ندمج النص الذي كتبه السائق مع ملاحظات البوت
-                    final_notes = f"صورتين مرسلتين من تلغرام."
-                    if session.get('text'):
-                        final_notes += f" ملاحظات السائق: {session['text']}"
-                    
-                    execute_query(cursor, """
-                        INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) 
-                        VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-                    """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), final_notes, session['car_image'], session['station_image']))
-                    conn.commit(); conn.close()
-                    
-                    del telegram_pending_photos[chat_id]
-                    
-                    send_telegram_message(chat_id, f"✅ تم استلام الصورتين بنجاح! العداد المقروء: {extracted.get('km') or 'غير واضح'}. اللترات: {extracted.get('liters') or 'غير واضحة'}. بانتظار مراجعة الإدارة.")
+                    # بدء مؤقت جديد لمدة 20 ثانية
+                    timer = threading.Timer(20.0, finalize_fuel_request, args=[chat_id])
+                    telegram_timers[chat_id] = timer
+                    timer.start()
+
             except Exception as e:
                 send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
                 
@@ -1368,217 +1398,18 @@ def telegram_webhook():
             if chat_id in telegram_pending_photos:
                 # إذا كان هناك صورة معلقة، نحدث النص الخاص بها
                 telegram_pending_photos[chat_id]['text'] = text
-                send_telegram_message(chat_id, "✅ تم استلام ملاحظاتك. يرجى إرسال صورة عداد الكازية الآن.")
+                
+                # إذا كانت الصورة الثانية قد وصلت بالفعل، نعيد ضبط المؤقت (نعطيه 20 ثانية إضافية)
+                if telegram_pending_photos[chat_id].get('station_image'):
+                    if chat_id in telegram_timers:
+                        telegram_timers[chat_id].cancel()
+                    timer = threading.Timer(20.0, finalize_fuel_request, args=[chat_id])
+                    telegram_timers[chat_id] = timer
+                    timer.start()
+                    send_telegram_message(chat_id, "✅ تم استلام ملاحظاتك. سيتم حفظ الطلب تلقائياً بعد 20 ثانية.")
+                else:
+                    send_telegram_message(chat_id, "✅ تم استلام ملاحظاتك. يرجى إرسال صورة عداد الكازية الآن.")
             else:
-                # إذا لم يكن هناك صورة معلقة
                 send_telegram_message(chat_id, "ℹ️ يرجى إرسال صورة عداد السيارة أولاً، ثم صورة عداد الكازية.")
             
     return jsonify({'status': 'ok'})
-
-@app.route('/admin/pending_fuel')
-@login_required
-def admin_pending_fuel():
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT pf.*, d.name as driver_name, c.name as car_name FROM pending_fuel pf LEFT JOIN drivers d ON pf.driver_id = d.id LEFT JOIN cars c ON pf.car_id = c.id WHERE pf.status = 'pending' ORDER BY pf.id DESC")
-    pending_fuels = cursor.fetchall()
-    execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall()
-    execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall(); conn.close()
-    return render_template('admin_pending_fuel.html', pending_fuels=pending_fuels, cars=cars_list, drivers=drivers_list)
-
-@app.route('/admin/pending_fuel/approve/<int:req_id>', methods=['POST'])
-@admin_required
-def approve_pending_fuel(req_id):
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "SELECT * FROM pending_fuel WHERE id=?", (req_id,)); req = cursor.fetchone()
-    if req:
-        fuel_date = request.form.get('fuel_date') or req['fuel_date']; car_id = request.form.get('car_id'); driver_id = request.form.get('driver_id') or None
-        fuel_type = request.form.get('fuel_type', 'بنزين'); source = request.form.get('source', 'كازية'); payment_status = request.form.get('payment_status', '')
-        liters = request.form.get('liters') or None; price = request.form.get('price_per_liter') or None; total = request.form.get('total_cost') or None
-        final = request.form.get('final_cost') or None; km = request.form.get('km_at_fill') or None; notes = request.form.get('notes', '')
-        car_image = req['car_image'] if 'car_image' in req.keys() else None
-        station_image = req['station_image'] if 'station_image' in req.keys() else None
-        execute_query(cursor, "INSERT INTO fuel (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price_per_liter, total_cost, final_cost, km_at_fill, notes, car_image, station_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", (fuel_date, car_id, driver_id, fuel_type, source, payment_status, liters, price, total, final, km, notes, car_image, station_image))
-        execute_query(cursor, "UPDATE pending_fuel SET status='approved' WHERE id=?", (req_id,))
-        conn.commit(); flash('تمت الموافقة وإدخال التعبئة في النظام بنجاح', 'success')
-    else: flash('الطلب غير موجود', 'error')
-    conn.close(); return redirect(url_for('admin_pending_fuel'))
-
-@app.route('/admin/pending_fuel/reject/<int:req_id>')
-@admin_required
-def reject_pending_fuel(req_id):
-    conn = get_connection(); cursor = conn.cursor()
-    execute_query(cursor, "UPDATE pending_fuel SET status='rejected' WHERE id=?", (req_id,))
-    conn.commit(); conn.close(); flash('تم رفض الطلب', 'success'); return redirect(url_for('admin_pending_fuel'))
-
-# ============== Driver App API ==============
-@app.route('/driver')
-def driver_app(): return render_template('driver_app.html')
-
-@app.route('/api/driver/init', methods=['GET'])
-def api_driver_init():
-    try:
-        conn = get_connection(); cursor = conn.cursor()
-        execute_query(cursor, "SELECT id, name, phone FROM drivers WHERE active=1 ORDER BY name"); drivers_list = [dict(row) for row in cursor.fetchall()]
-        execute_query(cursor, "SELECT id, name, plate_number FROM cars WHERE active=1 ORDER BY name"); cars_list = [dict(row) for row in cursor.fetchall()]
-        execute_query(cursor, "SELECT id, name FROM requesting_parties WHERE active=1 ORDER BY name"); parties_list = [dict(row) for row in cursor.fetchall()]
-        busy_driver_ids = list(get_busy_driver_ids(conn)); busy_car_ids = list(get_busy_car_ids(conn)); conn.close()
-        alerts = get_maintenance_alerts(); critical_alerts = [a for a in alerts if a['status'] == 'red']
-        return jsonify({'success': True, 'drivers': drivers_list, 'cars': cars_list, 'parties': parties_list, 'busy_driver_ids': busy_driver_ids, 'busy_car_ids': busy_car_ids, 'alerts': critical_alerts})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/driver/alerts', methods=['GET'])
-def api_driver_alerts():
-    try:
-        alerts = get_maintenance_alerts(); critical_alerts = [a for a in alerts if a['status'] == 'red']
-        return jsonify({'success': True, 'alerts': critical_alerts})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/driver/last_check/<int:car_id>', methods=['GET'])
-def api_driver_last_check(car_id):
-    try:
-        conn = get_connection(); last_check = get_last_daily_check(car_id, conn); conn.close()
-        if last_check:
-            return jsonify({'success': True, 'needs_check': False, 'last_check': {'id': last_check['id'], 'check_date': last_check['check_date'], 'check_time': last_check['check_time'], 'driver_name': last_check['driver_name'], 'general_notes': last_check['general_notes'] or '', 'has_issue': last_check['has_issue'], 'oil_image': last_check.get('oil_image'), 'radiator_image': last_check.get('radiator_image'), 'tires_image': last_check.get('tires_image'), 'battery_image': last_check.get('battery_image'), 'belts_image': last_check.get('belts_image'), 'oil_notes': last_check.get('oil_notes') or '', 'radiator_notes': last_check.get('radiator_notes') or '', 'tires_notes': last_check.get('tires_notes') or '', 'battery_notes': last_check.get('battery_notes') or '', 'belts_notes': last_check.get('belts_notes') or ''}})
-        return jsonify({'success': True, 'needs_check': True})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/driver/daily_check', methods=['POST'])
-def api_driver_daily_check():
-    try:
-        data = request.get_json(); car_id = data.get('car_id'); driver_id = data.get('driver_id'); km_at_check = data.get('km_at_check') or None
-        general_notes = data.get('general_notes', ''); has_issue = 1 if data.get('has_issue') else 0
-        if not car_id or not driver_id: return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
-        images = {}
-        for field in ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image']:
-            img_b64 = data.get(field, '')
-            if img_b64 and len(img_b64) > 100:
-                try:
-                    if ',' in img_b64: img_b64 = img_b64.split(',', 1)[1]
-                    img_data = base64.b64decode(img_b64); timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); filename = f"check_{field}_{car_id}_{driver_id}_{timestamp}.jpg"
-                    uploaded = upload_image_to_supabase(filename, img_data)
-                    if uploaded: images[field] = uploaded
-                    else:
-                        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                        with open(filepath, 'wb') as f: f.write(img_data)
-                        images[field] = filename
-                except: images[field] = None
-            else: images[field] = None
-        now = datetime.now() + timedelta(hours=3); check_date = now.strftime('%Y-%m-%d'); check_time = now.strftime('%H:%M:%S'); created_at = now.strftime('%Y-%m-%d %H:%M:%S')
-        conn = get_connection(); cursor = conn.cursor()
-        execute_query(cursor, """INSERT INTO daily_checks (check_date, check_time, car_id, driver_id, km_at_check, oil_checked, radiator_checked, tires_checked, battery_checked, belts_checked, oil_notes, radiator_notes, tires_notes, battery_notes, belts_notes, oil_image, radiator_image, tires_image, battery_image, belts_image, general_notes, has_issue, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""", (check_date, check_time, car_id, driver_id, km_at_check, 1 if data.get('oil_checked') else 0, 1 if data.get('radiator_checked') else 0, 1 if data.get('tires_checked') else 0, 1 if data.get('battery_checked') else 0, 1 if data.get('belts_checked') else 0, data.get('oil_notes', ''), data.get('radiator_notes', ''), data.get('tires_notes', ''), data.get('battery_notes', ''), data.get('belts_notes', ''), images.get('oil_image'), images.get('radiator_image'), images.get('tires_image'), images.get('battery_image'), images.get('belts_image'), general_notes, has_issue, created_at))
-        conn.commit(); execute_query(cursor, "SELECT MAX(id) as max_id FROM daily_checks"); row = cursor.fetchone(); check_id = row['max_id'] if row else None; conn.close()
-        return jsonify({'success': True, 'check_id': check_id, 'message': 'تم حفظ الفحص اليومي'})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/driver/start_trip', methods=['POST'])
-def api_driver_start_trip():
-    try:
-        data = request.get_json(); driver_id = data.get('driver_id'); car_id = data.get('car_id'); destination = data.get('destination', '').strip()
-        start_km = data.get('start_km'); start_image_b64 = data.get('start_image', ''); requesting_party_id = data.get('requesting_party_id') or None
-        if not driver_id or not car_id: return jsonify({'success': False, 'error': 'الرجاء اختيار السائق والسيارة'}), 400
-        if not destination: return jsonify({'success': False, 'error': 'الرجاء إدخال الوجهة'}), 400
-        if start_km is None or str(start_km).strip() == '': return jsonify({'success': False, 'error': 'الرجاء إدخال قراءة العداد'}), 400
-        try:
-            start_km = float(start_km)
-            if start_km <= 0: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
-        except: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
-        start_image_filename = None
-        if start_image_b64 and len(start_image_b64) > 100:
-            try:
-                if ',' in start_image_b64: start_image_b64 = start_image_b64.split(',', 1)[1]
-                img_data = base64.b64decode(start_image_b64); timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); start_image_filename = f"trip_start_{driver_id}_{car_id}_{timestamp}.jpg"
-                uploaded = upload_image_to_supabase(start_image_filename, img_data)
-                if uploaded: start_image_filename = uploaded
-                else:
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], start_image_filename)
-                    with open(filepath, 'wb') as f: f.write(img_data)
-            except: start_image_filename = None
-        now = datetime.now() + timedelta(hours=3); trip_date = now.strftime('%Y-%m-%d'); start_time = now.strftime('%H:%M:%S'); requester_name = ''
-        conn = get_connection(); cursor = conn.cursor()
-        if requesting_party_id:
-            execute_query(cursor, "SELECT name FROM requesting_parties WHERE id=?", (requesting_party_id,)); party_row = cursor.fetchone(); requester_name = party_row['name'] if party_row else ''
-        execute_query(cursor, """INSERT INTO trips (trip_date, car_id, driver_id, destination, start_km, start_time, start_image, trip_source, driver_confirmed, admin_seen, notes, requesting_party_id, requester) VALUES (?, ?, ?, ?, ?, ?, ?, 'driver_app', 1, 0, ?, ?, ?)""", (trip_date, car_id, driver_id, destination, start_km, start_time, start_image_filename, 'رحلة مسجلة من تطبيق السائق', requesting_party_id, requester_name))
-        conn.commit(); execute_query(cursor, "SELECT MAX(id) as max_id FROM trips"); row = cursor.fetchone(); trip_id = row['max_id'] if row else None; conn.close()
-        return jsonify({'success': True, 'trip_id': trip_id, 'message': 'تم بدء الرحلة بنجاح', 'start_time': start_time})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/driver/end_trip', methods=['POST'])
-def api_driver_end_trip():
-    try:
-        data = request.get_json(); trip_id = data.get('trip_id'); end_km = data.get('end_km'); end_image_b64 = data.get('end_image', ''); notes = data.get('notes', '')
-        if not trip_id: return jsonify({'success': False, 'error': 'رقم الرحلة مفقود'}), 400
-        if end_km is None or str(end_km).strip() == '': return jsonify({'success': False, 'error': 'الرجاء إدخال قراءة العداد النهائية'}), 400
-        try:
-            end_km = float(end_km)
-            if end_km <= 0: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون أكبر من صفر'}), 400
-        except: return jsonify({'success': False, 'error': 'قراءة العداد يجب أن تكون رقماً صحيحاً'}), 400
-        conn = get_connection(); cursor = conn.cursor()
-        execute_query(cursor, "SELECT start_km FROM trips WHERE id=?", (trip_id,)); trip = cursor.fetchone()
-        if not trip: conn.close(); return jsonify({'success': False, 'error': 'الرحلة غير موجودة'}), 404
-        start_km = trip['start_km']
-        if start_km is not None:
-            try:
-                if end_km <= float(start_km): conn.close(); return jsonify({'success': False, 'error': f'قراءة العداد النهائية ({end_km}) يجب أن تكون أكبر من قراءة البداية ({start_km})'}), 400
-            except: pass
-        distance = None
-        if start_km is not None and end_km is not None:
-            try:
-                distance = float(end_km) - float(start_km)
-                if distance < 0: distance = None
-            except: distance = None
-        end_image_filename = None
-        if end_image_b64 and len(end_image_b64) > 100:
-            try:
-                if ',' in end_image_b64: end_image_b64 = end_image_b64.split(',', 1)[1]
-                img_data = base64.b64decode(end_image_b64); timestamp = datetime.now().strftime('%Y%m%d_%H%M%S'); end_image_filename = f"trip_end_{trip_id}_{timestamp}.jpg"
-                uploaded = upload_image_to_supabase(end_image_filename, img_data)
-                if uploaded: end_image_filename = uploaded
-                else:
-                    filepath = os.path.join(app.config['UPLOAD_FOLDER'], end_image_filename)
-                    with open(filepath, 'wb') as f: f.write(img_data)
-            except: end_image_filename = None
-        now = datetime.now() + timedelta(hours=3); end_time = now.strftime('%H:%M:%S')
-        execute_query(cursor, "UPDATE trips SET end_km=?, end_time=?, end_image=?, distance=?, notes=? WHERE id=?", (end_km, end_time, end_image_filename, distance, notes, trip_id))
-        conn.commit(); conn.close()
-        return jsonify({'success': True, 'message': 'تم إنهاء الرحلة بنجاح', 'end_time': end_time, 'distance': distance})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/driver/active_trip/<int:driver_id>', methods=['GET'])
-def api_driver_active_trip(driver_id):
-    try:
-        conn = get_connection(); cursor = conn.cursor()
-        execute_query(cursor, "SELECT t.*, c.name as car_name FROM trips t JOIN cars c ON t.car_id = c.id WHERE t.driver_id = ? AND t.trip_source = 'driver_app' AND t.end_km IS NULL ORDER BY t.id DESC LIMIT 1", (driver_id,))
-        trip = cursor.fetchone(); conn.close()
-        if trip: return jsonify({'success': True, 'has_active': True, 'trip': dict(trip)})
-        return jsonify({'success': True, 'has_active': False})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/driver/recent_trips/<int:driver_id>', methods=['GET'])
-def api_driver_recent_trips(driver_id):
-    try:
-        conn = get_connection(); cursor = conn.cursor()
-        execute_query(cursor, "SELECT t.id, t.trip_date, t.destination, t.start_km, t.end_km, t.distance, t.start_time, t.end_time, c.name as car_name FROM trips t JOIN cars c ON t.car_id = c.id WHERE t.driver_id = ? ORDER BY t.id DESC LIMIT 5", (driver_id,))
-        trips = [dict(row) for row in cursor.fetchall()]; conn.close()
-        return jsonify({'success': True, 'trips': trips})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/driver/pending_count/<int:driver_id>', methods=['GET'])
-def api_driver_pending_count(driver_id):
-    try:
-        conn = get_connection(); cursor = conn.cursor()
-        execute_query(cursor, "SELECT COUNT(*) as cnt FROM trips WHERE driver_id = ? AND trip_source = 'driver_app' AND end_km IS NULL", (driver_id,))
-        count = cursor.fetchone()['cnt']; conn.close()
-        return jsonify({'success': True, 'count': count})
-    except Exception as e: return jsonify({'success': False, 'error': str(e)}), 500
-
-# ============== التشغيل ==============
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    print("=" * 60)
-    print(f"  قاعدة البيانات: {'PostgreSQL (Supabase)' if is_postgres() else 'SQLite (محلي)'}")
-    print(f"  Supabase URL: {'مضبوط ✓' if SUPABASE_URL else 'غير مضبوط ✗'}")
-    print(f"  Supabase Key: {'مضبوط ✓' if SUPABASE_SECRET_KEY else 'غير مضبوط ✗'}")
-    print(f"  Driver App:  http://localhost:{port}/driver")
-    print(f"  Dashboard:   http://localhost:{port}/")
-    print("=" * 60)
-    app.run(host='0.0.0.0', port=port, debug=False)
