@@ -80,69 +80,15 @@
         <div class="number">{{ summary.total_records }}</div>
         <div class="label">🔧 عدد الصيانات</div>
     </div>
-    <div class="stat-box">
-        <div class="number">{{ "%.0f"|format(summary.total_cost or 0) }}</div>
-        <div class="label">💰 إجمالي التكلفة</div>
+    <div class="stat-box" style="border-right-color: #d69e2e;">
+        <div class="number">{{ "%.0f"|format(summary.total_cost_syp or 0) }}</div>
+        <div class="label">💰 إجمالي التكلفة (ل.س)</div>
     </div>
-    <div class="stat-box">
-        <div class="number">{{ summary.by_car|length }}</div>
-        <div class="label">🚗 عدد السيارات</div>
+    <div class="stat-box" style="border-right-color: #38a169;">
+        <div class="number">{{ "%.0f"|format(summary.total_cost_usd or 0) }}</div>
+        <div class="label">💵 إجمالي التكلفة (دولار)</div>
     </div>
 </div>
-
-{% if summary.by_car %}
-<div class="card">
-    <h2>📊 ملخص حسب السيارة</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>السيارة</th>
-                <th>عدد الصيانات</th>
-                <th>إجمالي التكلفة</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for car_name, data in summary.by_car.items() %}
-            <tr>
-                <td><strong>{{ car_name }}</strong></td>
-                <td>{{ data.count }}</td>
-                <td>{{ "%.0f"|format(data.cost or 0) }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% endif %}
-
-{% if summary.by_category %}
-<div class="card">
-    <h2>📁 ملخص حسب الفئة</h2>
-    <table>
-        <thead>
-            <tr>
-                <th>الفئة</th>
-                <th>عدد الصيانات</th>
-                <th>إجمالي التكلفة</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for cat, data in summary.by_category.items() %}
-            <tr>
-                <td>
-                    {% if cat == 'دورية' %}
-                    <span class="badge" style="background:#bee3f8;color:#2c5282;">{{ cat }}</span>
-                    {% else %}
-                    <span class="badge" style="background:#e9d8fd;color:#553c9a;">{{ cat }}</span>
-                    {% endif %}
-                </td>
-                <td>{{ data.count }}</td>
-                <td>{{ "%.0f"|format(data.cost or 0) }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-{% endif %}
 
 {% if records %}
 <div class="card">
@@ -158,11 +104,10 @@
                     <th>الفئة</th>
                     <th>العداد</th>
                     <th>التكلفة</th>
-                    <th>رقم الفاتورة</th>
+                    <th>العملة</th>
+                    <th>الفاتورة</th>
                     <th>الورشة</th>
                     <th>الصيانة القادمة</th>
-                    <th>الفاتورة</th>
-                    <th>ملاحظات</th>
                 </tr>
             </thead>
             <tbody>
@@ -180,25 +125,26 @@
                         {% endif %}
                     </td>
                     <td>{{ m.km_at_service or '-' }}</td>
-                    <td style="font-weight: 600; color: #1e3a5f;">{{ m.cost or '-' }}</td>
-                    <td>{{ m.invoice_number or '-' }}</td>
+                    <td style="font-weight: 600; color: #1e3a5f;">{{ "%.0f"|format(m.cost) if m.cost else '-' }}</td>
+                    <td>
+                        {% if m.get('currency', 'ل.س') == 'دولار' %}
+                        <span class="badge" style="background:#c6f6d5;color:#22543d;">$</span>
+                        {% else %}
+                        <span class="badge" style="background:#fed7d7;color:#742a2a;">ل.س</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if m.invoice_number %}{{ m.invoice_number }}<br>{% endif %}
+                        {% if m.invoice_image %}
+                        <a href="/uploads/{{ m.invoice_image }}" target="_blank" style="font-size:12px;">📷 عرض</a>
+                        {% endif %}
+                    </td>
                     <td>{{ m.workshop or '-' }}</td>
                     <td>
                         {% if m.next_service_km %}{{ m.next_service_km }} كم{% else %}-{% endif %}
                     </td>
-                    <td>
-                        {% if m.invoice_image %}
-                        <a href="/uploads/{{ m.invoice_image }}" target="_blank">📷 عرض</a>
-                        {% else %}-{% endif %}
-                    </td>
-                    <td>{{ m.notes or '-' }}</td>
                 </tr>
                 {% endfor %}
-                <tr style="background: #fef3c7; font-weight: 700; border-top: 3px solid #d69e2e;">
-                    <td colspan="6" style="text-align: center; padding: 15px; color: #744210; font-size: 16px;">📊 الإجمالي</td>
-                    <td style="padding: 15px; color: #744210; font-size: 16px;">{{ "%.0f"|format(summary.total_cost or 0) }}</td>
-                    <td colspan="5" style="padding: 15px;">-</td>
-                </tr>
             </tbody>
         </table>
     </div>
