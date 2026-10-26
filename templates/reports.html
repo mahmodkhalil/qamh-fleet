@@ -32,7 +32,7 @@
                 <select name="car_id">
                     <option value="">-- كل السيارات --</option>
                     {% for car in cars %}
-                    <option value="{{ car.id }}" {% if car.id == selected_car %}selected{% endif %}>{{ car.name }}</option>
+                    <option value="{{ car.id }}" {% if car.id|string == selected_car %}selected{% endif %}>{{ car.name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -41,7 +41,7 @@
                 <select name="driver_id">
                     <option value="">-- كل السائقين --</option>
                     {% for driver in drivers %}
-                    <option value="{{ driver.id }}" {% if driver.id == selected_driver %}selected{% endif %}>{{ driver.name }}</option>
+                    <option value="{{ driver.id }}" {% if driver.id|string == selected_driver %}selected{% endif %}>{{ driver.name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -52,7 +52,7 @@
                 <select name="requesting_party_id">
                     <option value="">-- كل الجهات --</option>
                     {% for party in parties %}
-                    <option value="{{ party.id }}" {% if selected_party and party.id == selected_party|int %}selected{% endif %}>{{ party.name }}</option>
+                    <option value="{{ party.id }}" {% if selected_party and party.id|string == selected_party %}selected{% endif %}>{{ party.name }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -73,11 +73,11 @@
         <div class="form-group">
             <label>📋 نوع التقرير</label>
             <select name="report_type">
-                <option value="all" {% if report_type == 'all' %}selected{% endif %}>📊 التقرير الكامل (رحلات + وقود + صيانة + سائقين + جهات)</option>
+                <option value="all" {% if report_type == 'all' %}selected{% endif %}>📊 التقرير الكامل</option>
                 <option value="trips" {% if report_type == 'trips' %}selected{% endif %}>📅 الرحلات فقط</option>
                 <option value="fuel" {% if report_type == 'fuel' %}selected{% endif %}>⛽ الوقود فقط</option>
                 <option value="maintenance" {% if report_type == 'maintenance' %}selected{% endif %}>🔧 الصيانة فقط</option>
-                <option value="drivers" {% if report_type == 'drivers' %}selected{% endif %}>👤 السائقين فقط (مهمات + إضافي)</option>
+                <option value="drivers" {% if report_type == 'drivers' %}selected{% endif %}>👤 السائقين فقط</option>
                 <option value="parties" {% if report_type == 'parties' %}selected{% endif %}>🏢 الجهات الطالبة فقط</option>
             </select>
         </div>
