@@ -402,6 +402,28 @@
             outline: none;
             border-color: #1e3a5f;
         }
+
+        /* 🆕 توقيع المطور */
+        .developer-signature {
+            text-align: center;
+            padding: 20px 15px 15px;
+            margin-top: 10px;
+            font-size: 10px;
+            color: #cbd5e0;
+            border-top: 1px dashed #e2e8f0;
+            letter-spacing: 0.3px;
+            line-height: 1.8;
+        }
+        .developer-signature strong {
+            color: #a0aec0;
+            font-weight: 600;
+        }
+        .developer-signature .phone {
+            direction: ltr;
+            display: inline-block;
+            color: #a0aec0;
+            font-size: 9px;
+        }
     </style>
 </head>
 <body>
@@ -467,7 +489,6 @@
             <h2>🏁 إنهاء الرحلة</h2>
             <div class="form-group">
                 <label>صورة العداد (النهاية) — اختياري</label>
-                <!-- 🆕 زرين: تصوير + استديو -->
                 <div class="image-buttons">
                     <button type="button" class="btn-camera" onclick="document.getElementById('endCameraInput').click()">
                         📷 تصوير مباشر
@@ -645,7 +666,6 @@
 
             <div class="form-group">
                 <label>صورة العداد (البداية) — اختياري</label>
-                <!-- 🆕 زرين: تصوير + استديو -->
                 <div class="image-buttons">
                     <button type="button" class="btn-camera" onclick="document.getElementById('startCameraInput').click()">
                         📷 تصوير مباشر
@@ -696,6 +716,12 @@
     </button>
 </div>
 
+<!-- 🆕 توقيع المطور -->
+<div class="developer-signature">
+    ✦ تصميم وتنفيذ: <strong>م. محمود خليل</strong> ✦
+    <br>
+    <span class="phone">للاستفسار: 0949158603</span>
+</div>
 <script>
 // ============== متغيرات عامة ==============
 let currentDriver = null;
@@ -741,7 +767,6 @@ function showAlert(message, type = 'info') {
 
 // 🆕 ربط أحداث الصور (تصوير + استديو)
 function setupImageListeners() {
-    // صور الرحلة (بداية + نهاية)
     ['start', 'end'].forEach(type => {
         document.getElementById(type + 'CameraInput').addEventListener('change', function(e) {
             handleImageSelect(e, type + 'ImageUpload', type);
@@ -750,7 +775,6 @@ function setupImageListeners() {
             handleImageSelect(e, type + 'ImageUpload', type);
         });
     });
-    // صور الفحص اليومي
     ['oil', 'radiator', 'tires', 'battery', 'belts'].forEach(field => {
         document.getElementById(field + 'CameraInput').addEventListener('change', function(e) {
             handleCheckImage(e, field);
@@ -761,7 +785,6 @@ function setupImageListeners() {
     });
 }
 
-// عرض التنبيهات الحرجة
 function renderCriticalAlerts(alerts) {
     const box = document.getElementById('criticalAlertsBox');
     if (!alerts || alerts.length === 0) {
@@ -793,7 +816,6 @@ function syncCheck(field) {
 function loadSavedIdentity() {
     const savedDriverId = localStorage.getItem('driver_id');
     const savedCarId = localStorage.getItem('car_id');
-    
     if (savedDriverId && savedCarId) {
         loadInitData(savedDriverId, savedCarId);
     } else {
@@ -805,19 +827,16 @@ async function loadInitData(savedDriverId, savedCarId) {
     try {
         const response = await fetch('/api/driver/init');
         const data = await response.json();
-        
         if (!data.success) {
             showAlert('خطأ في تحميل البيانات: ' + data.error, 'error');
             return;
         }
-        
         if (data.alerts) {
             renderCriticalAlerts(data.alerts);
         }
-        
         const busyDrivers = new Set(data.busy_driver_ids || []);
         const busyCars = new Set(data.busy_car_ids || []);
-        
+
         const driverSelect = document.getElementById('driverSelect');
         driverSelect.innerHTML = '<option value="">-- اختر السائق --</option>';
         data.drivers.forEach(d => {
@@ -832,7 +851,7 @@ async function loadInitData(savedDriverId, savedCarId) {
             }
             driverSelect.appendChild(opt);
         });
-        
+
         const carSelect = document.getElementById('carSelect');
         carSelect.innerHTML = '<option value="">-- اختر السيارة --</option>';
         data.cars.forEach(c => {
@@ -848,7 +867,7 @@ async function loadInitData(savedDriverId, savedCarId) {
             }
             carSelect.appendChild(opt);
         });
-        
+
         const partySelect = document.getElementById('requestingPartySelect');
         if (partySelect && data.parties) {
             partySelect.innerHTML = '<option value="">-- اختر الجهة الطالبة --</option>';
@@ -859,11 +878,10 @@ async function loadInitData(savedDriverId, savedCarId) {
                 partySelect.appendChild(opt);
             });
         }
-        
+
         if (savedDriverId && savedCarId) {
             const driver = data.drivers.find(d => d.id == savedDriverId);
             const car = data.cars.find(c => c.id == savedCarId);
-            
             if (driver && car) {
                 currentDriver = driver;
                 currentCar = car;
@@ -872,9 +890,7 @@ async function loadInitData(savedDriverId, savedCarId) {
                 return;
             }
         }
-        
         showScreen('login');
-        
     } catch (error) {
         showAlert('فشل الاتصال بالسيرفر: ' + error.message, 'error');
         showScreen('login');
@@ -886,7 +902,7 @@ function showScreen(screen) {
     document.getElementById('activeTripScreen').classList.add('hidden');
     document.getElementById('newTripScreen').classList.add('hidden');
     document.getElementById('dailyCheckScreen').classList.add('hidden');
-    
+
     if (screen === 'login') {
         document.getElementById('loginScreen').classList.remove('hidden');
         document.getElementById('bottomNav').style.display = 'none';
@@ -906,12 +922,10 @@ function showScreen(screen) {
 function saveIdentity() {
     const driverId = document.getElementById('driverSelect').value;
     const carId = document.getElementById('carSelect').value;
-    
     if (!driverId || !carId) {
         showAlert('الرجاء اختيار السائق والسيارة', 'error');
         return;
     }
-    
     localStorage.setItem('driver_id', driverId);
     localStorage.setItem('car_id', carId);
     location.reload();
@@ -927,11 +941,9 @@ function changeIdentity() {
 
 async function checkDailyCheckNeeded() {
     if (!currentCar) return;
-    
     try {
         const response = await fetch(`/api/driver/active_trip/${currentDriver.id}`);
         const data = await response.json();
-        
         if (data.success && data.has_active) {
             currentActiveTrip = data.trip;
             displayActiveTrip(data.trip);
@@ -941,11 +953,9 @@ async function checkDailyCheckNeeded() {
     } catch (error) {
         console.error('خطأ في فحص الرحلة النشطة:', error);
     }
-    
     try {
         const checkRes = await fetch(`/api/driver/last_check/${currentCar.id}`);
         const checkData = await checkRes.json();
-        
         if (checkData.success && checkData.needs_check) {
             displayNewTripScreen();
             showScreen('daily_check');
@@ -972,36 +982,17 @@ async function checkDailyCheckNeeded() {
 
 function displayLastCheckBox(lastCheck) {
     const box = document.getElementById('lastCheckBox');
-    
     let html = '<div class="last-check-box">';
     html += '<h3>✅ تم فحص هذه السيارة مسبقاً</h3>';
     html += `<div class="info-row"><span class="info-label">👤 السائق:</span><span class="info-value">${lastCheck.driver_name}</span></div>`;
     html += `<div class="info-row"><span class="info-label">🕐 الساعة:</span><span class="info-value">${lastCheck.check_time}</span></div>`;
     html += `<div class="info-row"><span class="info-label">📅 التاريخ:</span><span class="info-value">${lastCheck.check_date}</span></div>`;
-    
     if (lastCheck.has_issue == 1) {
         html += `<div class="info-row"><span class="info-label">⚠️ الحالة:</span><span class="info-value" style="color:#e53e3e;">يوجد عطل</span></div>`;
     }
-    
     if (lastCheck.general_notes) {
         html += `<div class="notes-box"><strong>📝 ملاحظات الفحص:</strong><br>${lastCheck.general_notes}</div>`;
     }
-    
-    const images = ['oil_image', 'radiator_image', 'tires_image', 'battery_image', 'belts_image'];
-    const imageLabels = {oil_image: 'زيت', radiator_image: 'راديتور', tires_image: 'إطارات', battery_image: 'بطارية', belts_image: 'قشاطات'};
-    const hasImages = images.some(img => lastCheck[img]);
-    
-    if (hasImages) {
-        html += '<div class="images-box"><strong style="font-size:13px;">📷 صور الأعطال:</strong><br>';
-        images.forEach(imgField => {
-            if (lastCheck[imgField]) {
-                const imgUrl = `/uploads/${lastCheck[imgField]}`;
-                html += `<img src="${imgUrl}" alt="${imageLabels[imgField]}" onclick="window.open('${imgUrl}', '_blank')" style="max-width:80px; max-height:80px; border-radius:6px; margin-left:5px; margin-top:5px; cursor:pointer; border:2px solid white;" onerror="this.style.display='none'">`;
-            }
-        });
-        html += '</div>';
-    }
-    
     html += '</div>';
     box.innerHTML = html;
     box.classList.remove('hidden');
@@ -1017,16 +1008,13 @@ function toggleCheck(field) {
     }
 }
 
-// 🆕 معالج صور الفحص اليومي (تصوير + استديو)
 function handleCheckImage(event, field) {
     const file = event.target.files[0];
     if (!file) return;
-    
     const reader = new FileReader();
     reader.onload = function(e) {
         compressImage(e.target.result, 800, 0.7, function(compressedData) {
             checkImagesData[field] = compressedData;
-            
             const upload = document.getElementById(field + '_image_upload');
             upload.classList.add('has-image');
             upload.innerHTML = `
@@ -1035,7 +1023,6 @@ function handleCheckImage(event, field) {
                 <input type="file" id="${field}CameraInput" accept="image/*" capture="environment" style="display:none;">
                 <input type="file" id="${field}GalleryInput" accept="image/*" style="display:none;">
             `;
-            // إعادة ربط الأحداث بعد التحديث
             document.getElementById(field + 'CameraInput').addEventListener('change', function(e) {
                 handleCheckImage(e, field);
             });
@@ -1052,11 +1039,9 @@ async function submitDailyCheck() {
         showAlert('خطأ: السائق أو السيارة غير محدد', 'error');
         return;
     }
-    
     const btn = document.getElementById('submitCheckBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
-    
     try {
         const payload = {
             car_id: currentCar.id,
@@ -1080,15 +1065,12 @@ async function submitDailyCheck() {
             battery_image: checkImagesData.battery,
             belts_image: checkImagesData.belts
         };
-        
         const response = await fetch('/api/driver/daily_check', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        
         const data = await response.json();
-        
         if (data.success) {
             showAlert('✓ تم حفظ الفحص اليومي بنجاح', 'success');
             document.getElementById('checkKm').value = '';
@@ -1117,10 +1099,7 @@ async function submitDailyCheck() {
                 });
                 checkImagesData[f] = null;
             });
-            
-            setTimeout(() => {
-                checkDailyCheckNeeded();
-            }, 800);
+            setTimeout(() => { checkDailyCheckNeeded(); }, 800);
         } else {
             showAlert('❌ ' + data.error, 'error');
         }
@@ -1151,13 +1130,11 @@ function checkEndKm() {
     const warning = document.getElementById('rangeWarning');
     const endKm = parseFloat(endKmInput.value);
     const startKm = parseFloat(currentActiveTrip ? currentActiveTrip.start_km : 0);
-    
     if (endKmInput.value === '' || isNaN(endKm)) {
         endKmInput.classList.remove('error');
         warning.classList.remove('show');
         return;
     }
-    
     if (endKm <= startKm) {
         endKmInput.classList.add('error');
         warning.classList.add('show');
@@ -1167,11 +1144,9 @@ function checkEndKm() {
     }
 }
 
-// 🆕 معالج صور الرحلة (تصوير + استديو)
 function handleImageSelect(event, uploadId, type) {
     const file = event.target.files[0];
     if (!file) return;
-    
     const reader = new FileReader();
     reader.onload = function(e) {
         compressImage(e.target.result, 1000, 0.7, function(compressedData) {
@@ -1180,7 +1155,6 @@ function handleImageSelect(event, uploadId, type) {
             } else {
                 endImageData = compressedData;
             }
-            
             const upload = document.getElementById(uploadId);
             upload.classList.add('has-image');
             upload.classList.remove('error');
@@ -1190,7 +1164,6 @@ function handleImageSelect(event, uploadId, type) {
                 <input type="file" id="${type}CameraInput" accept="image/*" capture="environment" style="display:none;">
                 <input type="file" id="${type}GalleryInput" accept="image/*" style="display:none;">
             `;
-            
             document.getElementById(type + 'CameraInput').addEventListener('change', function(e) {
                 handleImageSelect(e, uploadId, type);
             });
@@ -1208,7 +1181,6 @@ function compressImage(dataUrl, maxSize, quality, callback) {
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        
         if (width > height && width > maxSize) {
             height = (height * maxSize) / width;
             width = maxSize;
@@ -1216,7 +1188,6 @@ function compressImage(dataUrl, maxSize, quality, callback) {
             width = (width * maxSize) / height;
             height = maxSize;
         }
-        
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
@@ -1232,22 +1203,18 @@ async function startTrip() {
     const startKmInput = document.getElementById('startKm');
     const startKm = startKmInput.value;
     const startUpload = document.getElementById('startImageUpload');
-    
     startKmInput.classList.remove('error');
     startUpload.classList.remove('error');
-    
     if (!destination) {
         showAlert('⚠️ الرجاء إدخال الوجهة', 'error');
         return;
     }
-    
     if (!startKm || startKm.trim() === '') {
         startKmInput.classList.add('error');
         showAlert('⚠️ الرجاء إدخال قراءة العداد', 'error');
         startKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
-    
     const startKmNum = parseFloat(startKm);
     if (isNaN(startKmNum) || startKmNum <= 0) {
         startKmInput.classList.add('error');
@@ -1255,7 +1222,6 @@ async function startTrip() {
         startKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
-    
     if (!startImageData) {
         const confirmed = confirm('⚠️ ما رفقت صورة العداد.\n\nهل أنت متأكد من المتابعة بدون صورة؟');
         if (!confirmed) {
@@ -1263,11 +1229,9 @@ async function startTrip() {
             return;
         }
     }
-    
     const btn = document.getElementById('startTripBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
-    
     try {
         const response = await fetch('/api/driver/start_trip', {
             method: 'POST',
@@ -1281,9 +1245,7 @@ async function startTrip() {
                 requesting_party_id: requestingPartyId
             })
         });
-        
         const data = await response.json();
-        
         if (data.success) {
             showAlert('✓ تم بدء الرحلة بنجاح', 'success');
             document.getElementById('destination').value = '';
@@ -1304,7 +1266,6 @@ async function startTrip() {
             document.getElementById('startGalleryInput').addEventListener('change', function(e) {
                 handleImageSelect(e, 'startImageUpload', 'start');
             });
-            
             setTimeout(() => checkDailyCheckNeeded(), 800);
         } else {
             showAlert('❌ ' + data.error, 'error');
@@ -1322,17 +1283,14 @@ async function endTrip() {
     const endKm = endKmInput.value;
     const notes = document.getElementById('endNotes').value.trim();
     const endUpload = document.getElementById('endImageUpload');
-    
     endKmInput.classList.remove('error');
     endUpload.classList.remove('error');
-    
     if (!endKm || endKm.trim() === '') {
         endKmInput.classList.add('error');
         showAlert('⚠️ الرجاء إدخال قراءة العداد النهائية', 'error');
         endKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
-    
     const endKmNum = parseFloat(endKm);
     if (isNaN(endKmNum) || endKmNum <= 0) {
         endKmInput.classList.add('error');
@@ -1340,7 +1298,6 @@ async function endTrip() {
         endKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
-    
     const startKmNum = parseFloat(currentActiveTrip ? currentActiveTrip.start_km : 0);
     if (endKmNum <= startKmNum) {
         endKmInput.classList.add('error');
@@ -1349,7 +1306,6 @@ async function endTrip() {
         endKmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
-    
     if (!endImageData) {
         const confirmed = confirm('⚠️ ما رفقت صورة العداد النهائي.\n\nهل أنت متأكد من المتابعة بدون صورة؟');
         if (!confirmed) {
@@ -1357,13 +1313,10 @@ async function endTrip() {
             return;
         }
     }
-    
     if (!confirm('هل أنت متأكد من إنهاء الرحلة؟')) return;
-    
     const btn = document.getElementById('endTripBtn');
     btn.disabled = true;
     btn.innerHTML = '<span class="loading"></span> جاري الحفظ...';
-    
     try {
         const response = await fetch('/api/driver/end_trip', {
             method: 'POST',
@@ -1375,9 +1328,7 @@ async function endTrip() {
                 notes: notes
             })
         });
-        
         const data = await response.json();
-        
         if (data.success) {
             showAlert(`✓ تم إنهاء الرحلة بنجاح — المسافة: ${data.distance || 0} كم`, 'success');
             endImageData = null;
@@ -1401,13 +1352,10 @@ async function endTrip() {
 
 async function loadRecentTrips() {
     if (!currentDriver) return;
-    
     try {
         const response = await fetch(`/api/driver/recent_trips/${currentDriver.id}`);
         const data = await response.json();
-        
         const list = document.getElementById('recentTripsList');
-        
         if (data.success && data.trips.length > 0) {
             list.innerHTML = data.trips.map(t => {
                 const status = t.end_km ? '✓' : '⏳';
@@ -1475,7 +1423,6 @@ setInterval(() => {
             .catch(err => console.log('خطأ:', err));
     }
 }, 60000);
-
 </script>
 
 </body>
