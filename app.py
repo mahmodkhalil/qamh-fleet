@@ -1117,6 +1117,27 @@ def reports_requesting_parties():
     conn.close()
     return render_template('reports_requesting_parties.html', parties=parties_list, parties_report=parties_report, selected_party=party_id, date_from=date_from, date_to=date_to, has_filter=True)
 
+# ============== NEW: تقرير الفحوصات اليومية ==============
+@app.route('/reports/daily_checks')
+@login_required
+def reports_daily_checks():
+    date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''; car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''
+    conn = get_connection(); cursor = conn.cursor()
+    execute_query(cursor, "SELECT * FROM cars ORDER BY name"); cars_list = cursor.fetchall()
+    execute_query(cursor, "SELECT * FROM drivers ORDER BY name"); drivers_list = cursor.fetchall()
+    query = "SELECT dc.*, c.name as car_name, d.name as driver_name FROM daily_checks dc JOIN cars c ON dc.car_id = c.id JOIN drivers d ON dc.driver_id = d.id WHERE 1=1"
+    params = []
+    if date_from: query += " AND dc.check_date >= ?"; params.append(date_from)
+    if date_to: query += " AND dc.check_date <= ?"; params.append(date_to)
+    if car_id: query += " AND dc.car_id = ?"; params.append(car_id)
+    if driver_id: query += " AND dc.driver_id = ?"; params.append(driver_id)
+    query += " ORDER BY dc.id DESC"
+    execute_query(cursor, query, params); checks = cursor.fetchall()
+    total_checks = len(checks); with_issue = len([c for c in checks if c['has_issue'] == 1])
+    conn.close()
+    summary = {'total_checks': total_checks, 'with_issue': with_issue}
+    return render_template('reports_daily_checks.html', cars=cars_list, drivers=drivers_list, checks=checks, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=True)
+
 # ============== تصدير الإكسل الاحترافي (الشهري) ==============
 @app.route('/reports/export')
 @login_required
