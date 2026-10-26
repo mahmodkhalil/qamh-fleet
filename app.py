@@ -26,13 +26,11 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = 'qamh_fleet_secret_2026'
 
-# ============== مسار البيانات ==============
 DATA_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(DATA_DIR, 'qamh_fleet.db')
 UPLOAD_FOLDER = os.path.join(DATA_DIR, 'uploads')
 PASSWORDS_FILE = os.path.join(DATA_DIR, 'passwords.json')
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
-
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -45,69 +43,54 @@ if not os.path.exists(UPLOAD_FOLDER):
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN', 'ضع_توكن_البوت_هنا')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', 'ضع_مفتاح_جيميني_هنا')
 
-# ============== Supabase Storage ==============
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_SECRET_KEY = os.environ.get('SUPABASE_SECRET_KEY', '')
 SUPABASE_BUCKET = 'qamh-images'
 
 def upload_image_to_supabase(filename, img_data):
-    if not SUPABASE_URL or not SUPABASE_SECRET_KEY:
-        return None
+    if not SUPABASE_URL or not SUPABASE_SECRET_KEY: return None
     try:
         url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
         headers = {'Authorization': f'Bearer {SUPABASE_SECRET_KEY}', 'Content-Type': 'image/jpeg', 'x-upsert': 'true'}
         response = requests.post(url, headers=headers, data=img_data, timeout=30)
         return filename if response.status_code in (200, 201) else None
-    except Exception as e:
-        print(f"⚠ خطأ في رفع الصورة لـ Supabase: {e}")
-        return None
+    except Exception as e: print(f"⚠ خطأ في رفع الصورة لـ Supabase: {e}"); return None
 
 def delete_image_from_supabase(filename):
-    if not filename or not SUPABASE_URL or not SUPABASE_SECRET_KEY:
-        return False
+    if not filename or not SUPABASE_URL or not SUPABASE_SECRET_KEY: return False
     try:
         url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_BUCKET}/{filename}"
         headers = {'Authorization': f'Bearer {SUPABASE_SECRET_KEY}'}
         response = requests.delete(url, headers=headers, timeout=30)
         return response.status_code in (200, 204)
-    except Exception:
-        return False
+    except Exception: return False
 
-# ============== دوال مساعدة ==============
 def load_passwords():
     if not os.path.exists(PASSWORDS_FILE):
         default = {'admin_password': 'admin2026', 'viewer_password': 'qamh2026'}
-        with open(PASSWORDS_FILE, 'w', encoding='utf-8') as f:
-            json.dump(default, f, ensure_ascii=False, indent=4)
+        with open(PASSWORDS_FILE, 'w', encoding='utf-8') as f: json.dump(default, f, ensure_ascii=False, indent=4)
         return default
     try:
-        with open(PASSWORDS_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except Exception:
-        return {'admin_password': 'admin2026', 'viewer_password': 'qamh2026'}
+        with open(PASSWORDS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+    except Exception: return {'admin_password': 'admin2026', 'viewer_password': 'qamh2026'}
 
 def save_passwords(data):
-    with open(PASSWORDS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
+    with open(PASSWORDS_FILE, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, indent=4)
 
 def get_admin_password(): return load_passwords().get('admin_password', 'admin2026')
 def get_viewer_password(): return load_passwords().get('viewer_password', 'qamh2026')
 def allowed_file(filename): return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def get_connection():
-    if DATABASE_URL:
-        return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    if DATABASE_URL: return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     else:
-        conn = sqlite3.connect(DB_PATH)
-        conn.row_factory = sqlite3.Row
-        return conn
+        conn = sqlite3.connect(DB_PATH); conn.row_factory = sqlite3.Row; return conn
 
 def is_postgres(): return DATABASE_URL is not None
 
 def execute_query(cursor, query, params=()):
     if is_postgres(): query = query.replace('?', '%s')
-    cursor.execute(query, params)
-    return cursor
+    cursor.execute(query, params); return cursor
 
 def is_admin(): return session.get('role') == 'admin'
 def is_viewer(): return session.get('role') in ('admin', 'viewer')
@@ -123,8 +106,7 @@ def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not is_admin():
-            flash('هذا الإجراء متاح للمسؤول فقط', 'error')
-            return redirect(url_for('index'))
+            flash('هذا الإجراء متاح للمسؤول فقط', 'error'); return redirect(url_for('index'))
         return f(*args, **kwargs)
     return decorated_function
 
@@ -134,15 +116,13 @@ def get_car_current_km(car_id):
     execute_query(cursor, "SELECT MAX(end_km) as max_km FROM trips WHERE car_id=? AND end_km IS NOT NULL", (car_id,)); row = cursor.fetchone(); trip_km = row['max_km'] if row else None
     execute_query(cursor, "SELECT MAX(km_at_service) as max_km FROM maintenance WHERE car_id=? AND km_at_service IS NOT NULL", (car_id,)); row = cursor.fetchone(); maint_km = row['max_km'] if row else None
     execute_query(cursor, "SELECT MAX(km_at_fill) as max_km FROM fuel WHERE car_id=? AND km_at_fill IS NOT NULL", (car_id,)); row = cursor.fetchone(); fuel_km = row['max_km'] if row else None
-    conn.close()
-    candidates = [x for x in [trip_km, maint_km, fuel_km] if x is not None]
+    conn.close(); candidates = [x for x in [trip_km, maint_km, fuel_km] if x is not None]
     return max(candidates) if candidates else 0
 
 def get_maintenance_alerts():
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.next_service_km IS NOT NULL AND m.category = 'دورية' ORDER BY m.car_id, m.km_at_service DESC")
-    all_maint = cursor.fetchall(); conn.close()
-    latest_per_car = {}
+    all_maint = cursor.fetchall(); conn.close(); latest_per_car = {}
     for m in all_maint:
         if m['car_id'] not in latest_per_car: latest_per_car[m['car_id']] = m
     alerts = []
@@ -774,6 +754,7 @@ def daily_check_delete(check_id):
         flash('تم حذف الفحص اليومي بنجاح', 'success')
     except Exception as e: flash(f'خطأ في الحذف: {str(e)}', 'error')
     return redirect(url_for('daily_checks_list'))
+
 # ============== السائقين ==============
 @app.route('/drivers')
 @login_required
@@ -978,7 +959,6 @@ def uploaded_file(filename):
         except: pass
         return redirect(f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_BUCKET}/{filename}")
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
-
 # ============== التقارير ==============
 @app.route('/reports')
 @login_required
@@ -1250,6 +1230,66 @@ def export_daily_checks_excel():
         max_length = max(len(str(cell.value or '')) for cell in col); ws.column_dimensions[col[0].column_letter].width = max_length + 3
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='daily_checks_report.xlsx')
+
+@app.route('/reports/drivers/export')
+@login_required
+def export_drivers_excel():
+    driver_id = request.args.get('driver_id') or ''; date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
+    conn = get_connection(); cursor = conn.cursor()
+    query_travel = "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id WHERE 1=1"
+    travel_params = []
+    if driver_id: query_travel += " AND tm.driver_id = ?"; travel_params.append(driver_id)
+    if date_from: query_travel += " AND tm.date >= ?"; travel_params.append(date_from)
+    if date_to: query_travel += " AND tm.date <= ?"; travel_params.append(date_to)
+    query_travel += " ORDER BY tm.date DESC, tm.id DESC"
+    execute_query(cursor, query_travel, travel_params); travels = cursor.fetchall()
+    query_overtime = "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE 1=1"
+    overtime_params = []
+    if driver_id: query_overtime += " AND o.driver_id = ?"; overtime_params.append(driver_id)
+    if date_from: query_overtime += " AND o.date >= ?"; overtime_params.append(date_from)
+    if date_to: query_overtime += " AND o.date <= ?"; overtime_params.append(date_to)
+    query_overtime += " ORDER BY o.date DESC, o.id DESC"
+    execute_query(cursor, query_overtime, overtime_params); overtimes = cursor.fetchall()
+    conn.close()
+    wb = Workbook(); ws = wb.active; ws.title = "Travel Missions"; ws.sheet_view.rightToLeft = True
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
+    ws.append(['التاريخ', 'السائق', 'الوصف', 'المسافة (كم)', 'مهمة سفر؟'])
+    for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
+    for tm in travels: ws.append([tm['date'], tm['driver_name'], tm['description'] or '', tm['distance_km'] or 0, 'نعم' if tm['is_travel'] == 1 else 'لا'])
+    for col in ws.columns:
+        max_length = max(len(str(cell.value or '')) for cell in col); ws.column_dimensions[col[0].column_letter].width = max_length + 3
+    ws2 = wb.create_sheet("Overtime"); ws2.sheet_view.rightToLeft = True
+    ws2.append(['التاريخ', 'السائق', 'ساعات صباحية', 'ساعات مسائية', 'الإجمالي'])
+    for cell in ws2[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
+    for o in overtimes:
+        mh = o['morning_hours'] or 0; eh = o['evening_hours'] or 0
+        ws2.append([o['date'], o['driver_name'], mh, eh, mh + eh])
+    for col in ws2.columns:
+        max_length = max(len(str(cell.value or '')) for cell in col); ws2.column_dimensions[col[0].column_letter].width = max_length + 3
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='drivers_report.xlsx')
+
+@app.route('/reports/requesting_parties/export')
+@login_required
+def export_requesting_parties_excel():
+    party_id = request.args.get('party_id') or ''; date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
+    conn = get_connection(); cursor = conn.cursor()
+    query = "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE 1=1"
+    params = []
+    if party_id: query += " AND t.requesting_party_id = ?"; params.append(party_id)
+    if date_from: query += " AND t.trip_date >= ?"; params.append(date_from)
+    if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
+    query += " ORDER BY t.trip_date DESC, t.id DESC"
+    execute_query(cursor, query, params); trips = cursor.fetchall(); conn.close()
+    wb = Workbook(); ws = wb.active; ws.title = "Requesting Parties"; ws.sheet_view.rightToLeft = True
+    header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid"); header_font = Font(color="FFFFFF", bold=True, size=12)
+    ws.append(['الجهة الطالبة', 'التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)'])
+    for cell in ws[1]: cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center')
+    for t in trips: ws.append([t['party_name'] or '', t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '', t['distance'] or 0])
+    for col in ws.columns:
+        max_length = max(len(str(cell.value or '')) for cell in col); ws.column_dimensions[col[0].column_letter].width = max_length + 3
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name='requesting_parties_report.xlsx')
 # ============== Telegram Webhook & Pending Fuel ==============
 telegram_pending_photos = {}
 
@@ -1257,7 +1297,11 @@ telegram_pending_photos = {}
 def telegram_webhook():
     data = request.get_json()
     if 'message' in data:
-        chat_id = data['message']['chat']['id']; text = data['message'].get('text', ''); photos = data['message'].get('photo', [])
+        chat_id = data['message']['chat']['id']
+        text = data['message'].get('text', '').strip()
+        photos = data['message'].get('photo', [])
+        
+        # 1. إذا أرسل السائق صورة
         if photos:
             file_id = photos[-1]['file_id']
             file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}"
@@ -1266,32 +1310,69 @@ def telegram_webhook():
                 file_path = file_info['result']['file_path']
                 img_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
                 img_data = requests.get(img_url).content
+                
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 filename = f"tg_fuel_{chat_id}_{timestamp}.jpg"
+                
                 uploaded_filename = upload_image_to_supabase(filename, img_data)
                 if not uploaded_filename:
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     with open(filepath, 'wb') as f: f.write(img_data)
                     uploaded_filename = filename
+
                 img_b64 = base64.b64encode(img_data).decode('utf-8')
+                
                 if chat_id not in telegram_pending_photos:
-                    telegram_pending_photos[chat_id] = {'car_image': uploaded_filename, 'car_b64': img_b64, 'station_image': None, 'station_b64': None, 'text': text}
+                    # استلام الصورة الأولى (عداد السيارة)
+                    telegram_pending_photos[chat_id] = {
+                        'car_image': uploaded_filename, 
+                        'car_b64': img_b64, 
+                        'station_image': None, 
+                        'station_b64': None, 
+                        'text': text  # نحفظ النص إن وجد
+                    }
                     send_telegram_message(chat_id, "✅ تم استلام صورة عداد السيارة. يرجى إرسال صورة عداد الكازية الآن لإكمال الطلب.")
                 else:
+                    # استلام الصورة الثانية (عداد الكازية)
                     telegram_pending_photos[chat_id]['station_image'] = uploaded_filename
                     telegram_pending_photos[chat_id]['station_b64'] = img_b64
+                    # إذا كان هناك نص مرفق مع الصورة الثانية، نحدث النص
+                    if text:
+                        telegram_pending_photos[chat_id]['text'] = text
+                    
                     session = telegram_pending_photos[chat_id]
                     extracted = extract_data_from_images(car_img_b64=session['car_b64'], station_img_b64=session['station_b64'])
+                    
                     conn = get_connection(); cursor = conn.cursor()
                     now = datetime.now() + timedelta(hours=3)
-                    execute_query(cursor, """INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)""", (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), f"صورتين مرسلتين من تلغرام. النص: {text}", session['car_image'], session['station_image']))
+                    
+                    # ندمج النص الذي كتبه السائق مع ملاحظات البوت
+                    final_notes = f"صورتين مرسلتين من تلغرام."
+                    if session.get('text'):
+                        final_notes += f" ملاحظات السائق: {session['text']}"
+                    
+                    execute_query(cursor, """
+                        INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) 
+                        VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+                    """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), final_notes, session['car_image'], session['station_image']))
                     conn.commit(); conn.close()
+                    
                     del telegram_pending_photos[chat_id]
+                    
                     send_telegram_message(chat_id, f"✅ تم استلام الصورتين بنجاح! العداد المقروء: {extracted.get('km') or 'غير واضح'}. اللترات: {extracted.get('liters') or 'غير واضحة'}. بانتظار مراجعة الإدارة.")
             except Exception as e:
                 send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
+                
+        # 2. إذا أرسل السائق نصاً فقط (بدون صورة)
         elif text:
-            send_telegram_message(chat_id, "ℹ️ يرجى إرسال صورة عداد السيارة أولاً، ثم صورة عداد الكازية.")
+            if chat_id in telegram_pending_photos:
+                # إذا كان هناك صورة معلقة، نحدث النص الخاص بها
+                telegram_pending_photos[chat_id]['text'] = text
+                send_telegram_message(chat_id, "✅ تم استلام ملاحظاتك. يرجى إرسال صورة عداد الكازية الآن.")
+            else:
+                # إذا لم يكن هناك صورة معلقة
+                send_telegram_message(chat_id, "ℹ️ يرجى إرسال صورة عداد السيارة أولاً، ثم صورة عداد الكازية.")
+            
     return jsonify({'status': 'ok'})
 
 @app.route('/admin/pending_fuel')
