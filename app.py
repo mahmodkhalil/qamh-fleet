@@ -1103,7 +1103,6 @@ def reports_requesting_parties():
     conn.close()
     return render_template('reports_requesting_parties.html', parties=parties_list, parties_report=parties_report, selected_party=party_id, date_from=date_from, date_to=date_to, has_filter=bool(party_id or date_from or date_to))
 
-
 # ============== تصدير الإكسل الاحترافي ==============
 @app.route('/reports/export')
 @login_required
@@ -1259,7 +1258,6 @@ def export_excel():
     wb.save(output)
     output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_full_report_{month_str}.xlsx')
-
 
 # ============== تصدير باقي التقارير (تفصيلي) ==============
 @app.route('/reports/trips/export')
