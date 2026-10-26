@@ -34,114 +34,39 @@
     </form>
 </div>
 
-{% if has_filter and summary %}
-<div class="stats-grid">
-    <div class="stat-box">
-        <div class="number">{{ summary.total_trips }}</div>
-        <div class="label">📅 عدد الرحلات</div>
-    </div>
-    <div class="stat-box">
-        <div class="number">{{ "%.1f"|format(summary.total_km or 0) }}</div>
-        <div class="label">🛣️ إجمالي الكيلومترات</div>
-    </div>
-    <div class="stat-box">
-        <div class="number">{{ summary.parties_count }}</div>
-        <div class="label">🏢 عدد الجهات</div>
-    </div>
-    <div class="stat-box" style="border-right-color: #553c9a;">
-        <div class="number">{{ "%.0f"|format(summary.total_cost or 0) }}</div>
-        <div class="label">💰 إجمالي الكلفة (ل.س)</div>
-    </div>
-</div>
-
-{% if parties_report %}
-{% for p in parties_report %}
-<div class="card">
-    <h2>🏢 {{ p.party_name }}
-        <span style="font-size: 13px; font-weight: 400; color: #718096; margin-right: 10px;">
-            ({{ p.trips_count }} رحلة — {{ p.cars_count }} سيارة)
-        </span>
-    </h2>
-    
-    {% if p.party_notes %}
-    <p style="background:#f7fafc; padding:10px 15px; border-radius:6px; color:#4a5568; font-size:13px; margin-bottom:15px;">
-        📝 {{ p.party_notes }}
-    </p>
-    {% endif %}
-    
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px;">
-        <div style="background:#e9d8fd; padding:12px; border-radius:8px; text-align:center;">
-            <div style="font-size:11px; color:#553c9a; font-weight:600;">مجموع المسافة</div>
-            <div style="font-size:20px; font-weight:700; color:#553c9a;">{{ "%.1f"|format(p.total_km or 0) }} كم</div>
-        </div>
-        <div style="background:#fef3c7; padding:12px; border-radius:8px; text-align:center;">
-            <div style="font-size:11px; color:#744210; font-weight:600;">إجمالي الكلفة</div>
-            <div style="font-size:20px; font-weight:700; color:#744210;">{{ "%.0f"|format(p.total_cost or 0) }} ل.س</div>
-        </div>
-        <div style="background:#c6f6d5; padding:12px; border-radius:8px; text-align:center;">
-            <div style="font-size:11px; color:#22543d; font-weight:600;">عدد الرحلات</div>
-            <div style="font-size:20px; font-weight:700; color:#22543d;">{{ p.trips_count }}</div>
+{% if has_filter %}
+    {% if parties_report %}
+    <div class="card">
+        <h2>📊 ملخص الجهات</h2>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>الجهة الطالبة</th>
+                        <th>عدد الرحلات</th>
+                        <th>إجمالي المسافة (كم)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in parties_report %}
+                    <tr>
+                        <td><strong>{{ p.party_name }}</strong></td>
+                        <td>{{ p.trips_count }}</td>
+                        <td>{{ "%.1f"|format(p.total_km or 0) }} كم</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
-    
-    {% if p.trips %}
-    <div style="overflow-x: auto;">
-        <table style="background: white; font-size: 12px;">
-            <thead>
-                <tr>
-                    <th>#</th>
-                    <th>التاريخ</th>
-                    <th>السيارة</th>
-                    <th>السائق</th>
-                    <th>الوجهة</th>
-                    <th>نوع الرحلة</th>
-                    <th>المسافة</th>
-                    <th style="background:#e9d8fd;color:#553c9a;">كلفة الرحلة (ل.س)</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% set party_km = namespace(value=0) %}
-                {% set party_cost = namespace(value=0) %}
-                {% for t in p.trips %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>{{ t.trip_date }}</td>
-                    <td>{{ t.car_name }}</td>
-                    <td>{{ t.driver_name }}</td>
-                    <td>{{ t.destination or '-' }}</td>
-                    <td>{{ t.trip_type or '-' }}</td>
-                    <td>{{ t.distance or '-' }} كم</td>
-                    <td style="font-weight: 700; color: #553c9a;">
-                        {% if t.trip_cost %}{{ "%.0f"|format(t.trip_cost) }}{% else %}—{% endif %}
-                    </td>
-                </tr>
-                {% set party_km.value = party_km.value + (t.distance or 0) %}
-                {% set party_cost.value = party_cost.value + (t.trip_cost or 0) %}
-                {% endfor %}
-                <tr style="background: #fef3c7; font-weight: 700; border-top: 3px solid #d69e2e;">
-                    <td colspan="6" style="text-align: center; padding: 10px; color: #744210;">📊 الإجمالي</td>
-                    <td style="padding: 10px; color: #744210;">{{ "%.1f"|format(party_km.value) }} كم</td>
-                    <td style="padding: 10px; color: #553c9a;">{{ "%.0f"|format(party_cost.value) }} ل.س</td>
-                </tr>
-            </tbody>
-        </table>
+    {% else %}
+    <div class="card">
+        <p style="text-align: center; color: #718096; padding: 30px;">لا توجد رحلات مطابقة للفلتر.</p>
     </div>
     {% endif %}
-</div>
-{% endfor %}
 {% else %}
-<div class="card">
-    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد رحلات مطابقة للفلتر.</p>
-</div>
-{% endif %}
-
-{% elif not has_filter %}
 <div class="card">
     <p style="text-align: center; color: #718096; padding: 30px;">👆 اختر الجهة أو الفترة الزمنية واضغط "عرض التقرير".</p>
-</div>
-{% else %}
-<div class="card">
-    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد نتائج مطابقة للفلتر.</p>
 </div>
 {% endif %}
 
