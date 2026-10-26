@@ -1141,12 +1141,13 @@ def export_excel():
     
     wb = Workbook()
     
+    # التنسيقات (تم فصل الأسماء لضمان عدم التعارض)
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True, size=12)
     title_font = Font(size=16, bold=True, color="1E3A5F")
     total_fill = PatternFill(start_color="FEF3C7", end_color="FEF3C7", fill_type="solid")
     total_font = Font(bold=True, color="744210")
-    border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+    thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
     center_alignment = Alignment(horizontal='center', vertical='center')
 
     def apply_style(ws, title, headers, data_rows, totals_row=None):
@@ -1163,12 +1164,12 @@ def export_excel():
             cell.fill = header_fill
             cell.font = header_font
             cell.alignment = center_alignment
-            cell.border = border
+            cell.border = thin_border
 
         for row_data in data_rows:
             ws.append(row_data)
             for cell in ws[ws.max_row]:
-                cell.border = border
+                cell.border = thin_border
                 cell.alignment = center_alignment
 
         if totals_row:
@@ -1176,7 +1177,7 @@ def export_excel():
             for cell in ws[ws.max_row]:
                 cell.fill = total_fill
                 cell.font = total_font
-                cell.border = border
+                cell.border = thin_border
                 cell.alignment = center_alignment
 
         for col in ws.columns:
@@ -1206,7 +1207,7 @@ def export_excel():
     for row in summary_data:
         ws_sum.append(row)
         for cell in ws_sum[ws_sum.max_row]:
-            cell.border = border
+            cell.border = thin_border
             cell.alignment = center_alignment
     ws_sum.column_dimensions['A'].width = 30
     ws_sum.column_dimensions['B'].width = 20
