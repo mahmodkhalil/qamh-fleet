@@ -59,8 +59,7 @@
             </div>
         </div>
         
-        <!-- التعديل هنا: تم استخدام url_for بدلاً من الرابط الثابت -->
-        <a href="{{ url_for('export_fuel_excel', car_id=selected_car or '', driver_id=selected_driver or '', date_from=date_from or '', date_to=date_to or '', payment_filter=payment_filter or '') }}" class="btn btn-success">📥 تصدير Excel</a>
+        <a href="/reports/fuel/export?car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&payment_filter={{ payment_filter or '' }}" class="btn btn-success">📥 تصدير Excel</a>
     </form>
 </div>
 
@@ -74,26 +73,6 @@
         <div class="number">{{ "%.1f"|format(summary.total_liters or 0) }}</div>
         <div class="label">📊 إجمالي اللترات</div>
     </div>
-    <div class="stat-box" style="border-right-color: #d69e2e;">
-        <div class="number">{{ "%.1f"|format(summary.gasoline_liters or 0) }}</div>
-        <div class="label">⛽ بنزين (لتر)</div>
-    </div>
-    <div class="stat-box" style="border-right-color: #4a5568;">
-        <div class="number">{{ "%.1f"|format(summary.diesel_liters or 0) }}</div>
-        <div class="label">🛢️ ديزل (لتر)</div>
-    </div>
-    <div class="stat-box" style="border-right-color: #38a169;">
-        <div class="number">{{ "%.1f"|format(summary.tank_liters or 0) }}</div>
-        <div class="label">🏢 خزان الشركة (لتر)</div>
-    </div>
-    <div class="stat-box" style="border-right-color: #3182ce;">
-        <div class="number">{{ "%.1f"|format(summary.station_liters or 0) }}</div>
-        <div class="label">🏪 كازية (لتر)</div>
-    </div>
-    <div class="stat-box" style="border-right-color: #d69e2e;">
-        <div class="number">{{ "%.1f"|format(summary.gateway_liters or 0) }}</div>
-        <div class="label">🏆 البوابة الذهبية (لتر)</div>
-    </div>
     <div class="stat-box">
         <div class="number">{{ "%.0f"|format(summary.total_cost or 0) }}</div>
         <div class="label">💰 تكلفة الوقود (قسم الحركة)</div>
@@ -103,53 +82,6 @@
         <div class="label">📊 متوسط سعر اللتر</div>
     </div>
 </div>
-
-{% if summary.by_car %}
-<div class="card">
-    <h2>📊 ملخص حسب السيارة (المتوسط العام)</h2>
-    <div style="overflow-x: auto;">
-        <table>
-            <thead>
-                <tr>
-                    <th>السيارة</th>
-                    <th>عدد التعبئات</th>
-                    <th>إجمالي اللترات</th>
-                    <th>إجمالي التكلفة (قسم الحركة)</th>
-                    <th>إجمالي التكلفة التقديرية</th>
-                    <th style="background:#e9d8fd;color:#553c9a;">متوسط تكلفة/كم</th>
-                    <th style="background:#e9d8fd;color:#553c9a;">متوسط لتر/100كم</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for car_name, data in summary.by_car.items() %}
-                <tr>
-                    <td><strong>{{ car_name }}</strong></td>
-                    <td>{{ data.count }}</td>
-                    <td>{{ "%.1f"|format(data.liters or 0) }}</td>
-                    <td style="font-weight: 600; color: #1e3a5f;">{{ "%.0f"|format(data.cost or 0) }}</td>
-                    <td style="font-weight: 600; color: #718096;">{{ "%.0f"|format(data.cost_estimated or 0) }} *</td>
-                    <td style="font-weight: 600; color: #553c9a;">
-                        {% if data.cost_per_km %}
-                        {{ "%.0f"|format(data.cost_per_km) }} ل.س
-                        {% else %}<span style="color:#a0aec0;">(بحاجة تعبئتين)</span>{% endif %}
-                    </td>
-                    <td style="font-weight: 600; color: #553c9a;">
-                        {% if data.liters_per_100 %}
-                        {{ "%.2f"|format(data.liters_per_100) }} لتر
-                        {% else %}<span style="color:#a0aec0;">-</span>{% endif %}
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        <p style="color: #718096; font-size: 12px; margin-top: 10px;">
-            * التكلفة التقديرية = مجموع (اللترات × سعر اللتر) لكل التعبئات.
-            <br>
-            ** المتوسط العام محسوب من إجمالي اللترات والمسافات بين التعبئات (لتفادي التشويش).
-        </p>
-    </div>
-</div>
-{% endif %}
 
 {% if fuel_records %}
 <div class="card">
@@ -162,14 +94,10 @@
                     <th>التاريخ</th>
                     <th>السيارة</th>
                     <th>السائق</th>
-                    <th>نوع الوقود</th>
-                    <th>المصدر</th>
-                    <th>حالة الدفع</th>
                     <th>اللترات</th>
                     <th>سعر اللتر</th>
                     <th>الكلفة النهائية</th>
                     <th>العداد</th>
-                    <th>ملاحظات</th>
                 </tr>
             </thead>
             <tbody>
@@ -179,56 +107,22 @@
                     <td>{{ f.fuel_date }}</td>
                     <td>{{ f.car_name }}</td>
                     <td>{{ f.driver_name or '-' }}</td>
-                    <td>{{ f.fuel_type or '-' }}</td>
-                    <td>{{ f.source or '-' }}</td>
-                    <td>{{ f.payment_status or '-' }}</td>
                     <td>{{ f.liters or '-' }}</td>
                     <td>{{ f.price_per_liter or '-' }}</td>
                     <td style="font-weight: 600;">
                         {% if f.payment_status == 'مدفوعة من قسم الحركة' %}
-                            {% if f.final_cost %}
-                            <span style="color: #1e3a5f;">{{ "%.0f"|format(f.final_cost) }}</span>
-                            {% elif f.total_cost %}
-                            <span style="color: #1e3a5f;">{{ "%.0f"|format(f.total_cost) }}</span>
+                            {% if f.final_cost %}{{ "%.0f"|format(f.final_cost) }}
+                            {% elif f.total_cost %}{{ "%.0f"|format(f.total_cost) }}
                             {% else %}-{% endif %}
-                        {% elif f.final_cost %}
-                        <span style="color: #718096;">{{ "%.0f"|format(f.final_cost) }} *</span>
-                        {% elif f.total_cost %}
-                        <span style="color: #718096;">{{ "%.0f"|format(f.total_cost) }} *</span>
-                        {% elif f.price_per_liter and f.liters %}
-                        <span style="color: #718096;">{{ "%.0f"|format(f.price_per_liter * f.liters) }} *</span>
+                        {% elif f.final_cost %}{{ "%.0f"|format(f.final_cost) }} *
+                        {% elif f.total_cost %}{{ "%.0f"|format(f.total_cost) }} *
                         {% else %}-{% endif %}
                     </td>
                     <td>{{ f.km_at_fill or '-' }}</td>
-                    <td>{{ f.notes or '-' }}</td>
                 </tr>
                 {% endfor %}
-                <tr style="background: #fef3c7; font-weight: 700; border-top: 3px solid #d69e2e;">
-                    <td colspan="7" style="text-align: center; padding: 12px; color: #744210;">⛽ إجمالي بنزين</td>
-                    <td style="padding: 12px; color: #744210;">{{ "%.1f"|format(summary.gasoline_liters or 0) }}</td>
-                    <td style="padding: 12px;">-</td>
-                    <td style="padding: 12px; color: #744210;">{{ "%.0f"|format(summary.gasoline_cost or 0) }}</td>
-                    <td colspan="2" style="padding: 12px;">-</td>
-                </tr>
-                <tr style="background: #fef3c7; font-weight: 700; border-top: 1px solid #d69e2e;">
-                    <td colspan="7" style="text-align: center; padding: 12px; color: #744210;">🛢️ إجمالي ديزل</td>
-                    <td style="padding: 12px; color: #744210;">{{ "%.1f"|format(summary.diesel_liters or 0) }}</td>
-                    <td style="padding: 12px;">-</td>
-                    <td style="padding: 12px; color: #744210;">{{ "%.0f"|format(summary.diesel_cost or 0) }}</td>
-                    <td colspan="2" style="padding: 12px;">-</td>
-                </tr>
-                <tr style="background: #fcd34d; font-weight: 800; border-top: 3px solid #92400e;">
-                    <td colspan="7" style="text-align: center; padding: 15px; color: #744210; font-size: 16px;">💰 الإجمالي الكلي للدفع</td>
-                    <td style="padding: 15px; color: #718096;">-</td>
-                    <td style="padding: 15px;">-</td>
-                    <td style="padding: 15px; color: #744210; font-size: 18px;">{{ "%.0f"|format(summary.total_cost or 0) }}</td>
-                    <td colspan="2" style="padding: 15px;">-</td>
-                </tr>
             </tbody>
         </table>
-        <p style="color: #718096; font-size: 12px; margin-top: 10px;">
-            * الكلفة التقديرية (بناءً على سعر اللتر) — لأغراض حساب استهلاك السيارة فقط.
-        </p>
     </div>
 </div>
 {% else %}
