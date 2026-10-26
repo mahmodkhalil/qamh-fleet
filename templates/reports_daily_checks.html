@@ -1,35 +1,141 @@
 {% extends "base.html" %}
-{% block title %}تقرير الفحوصات اليومية{% endblock %}
+
+{% block title %}تقرير الفحوصات اليومية - نظام حركة سيارات مجموعة قمح القابضة{% endblock %}
+
 {% block content %}
+
 <div class="card">
     <h2>🔧 تقرير الفحوصات اليومية</h2>
-    <form method="GET" action="/reports/daily_checks" style="margin-bottom:25px; padding:20px; background:#f7fafc; border-radius:8px;">
+    
+    <form method="GET" action="/reports/daily_checks" style="margin-bottom: 25px; padding: 20px; background: #f7fafc; border-radius: 8px;">
         <div class="form-row-3">
-            <div class="form-group"><label>السيارة</label>
-                <select name="car_id"><option value="">-- الكل --</option>{% for c in cars %}<option value="{{ c.id }}" {% if c.id|string == selected_car %}selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>
+            <div class="form-group">
+                <label>🚗 السيارة</label>
+                <select name="car_id">
+                    <option value="">-- كل السيارات --</option>
+                    {% for car in cars %}
+                    <option value="{{ car.id }}" {% if car.id|string == selected_car %}selected{% endif %}>{{ car.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
-            <div class="form-group"><label>السائق</label>
-                <select name="driver_id"><option value="">-- الكل --</option>{% for d in drivers %}<option value="{{ d.id }}" {% if d.id|string == selected_driver %}selected{% endif %}>{{ d.name }}</option>{% endfor %}</select>
+            <div class="form-group">
+                <label>👤 السائق</label>
+                <select name="driver_id">
+                    <option value="">-- كل السائقين --</option>
+                    {% for driver in drivers %}
+                    <option value="{{ driver.id }}" {% if driver.id|string == selected_driver %}selected{% endif %}>{{ driver.name }}</option>
+                    {% endfor %}
+                </select>
             </div>
-            <div class="form-group"><label>&nbsp;</label><button type="submit" class="btn btn-primary" style="width:100%;">🔍 عرض</button></div>
+            <div class="form-group">
+                <label>📅 من تاريخ</label>
+                <input type="date" name="date_from" value="{{ date_from or '' }}">
+            </div>
         </div>
-        <div class="form-row">
-            <div class="form-group"><label>من تاريخ</label><input type="date" name="date_from" value="{{ date_from or '' }}"></div>
-            <div class="form-group"><label>إلى تاريخ</label><input type="date" name="date_to" value="{{ date_to or '' }}"></div>
+        
+        <div class="form-row-3">
+            <div class="form-group">
+                <label>📅 إلى تاريخ</label>
+                <input type="date" name="date_to" value="{{ date_to or '' }}">
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <div style="display: flex; gap: 5px;">
+                    <button type="submit" class="btn btn-primary" style="flex: 1;">🔍 عرض</button>
+                    <a href="/reports/daily_checks" class="btn btn-secondary">🔄</a>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>&nbsp;</label>
+                <a href="/reports/daily_checks/export?date_from={{ date_from or '' }}&date_to={{ date_to or '' }}&car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}" class="btn btn-success" style="width:100%;">📥 تصدير Excel</a>
+            </div>
         </div>
-        <!-- رابط التصدير (موجود مسبقاً في app.py) -->
-        <a href="/reports/daily_checks/export?car_id={{ selected_car or '' }}&driver_id={{ selected_driver or '' }}&date_from={{ date_from or '' }}&date_to={{ date_to or '' }}" class="btn btn-success">📥 تصدير Excel</a>
     </form>
 </div>
 
 {% if has_filter and summary %}
 <div class="stats-grid">
-    <div class="stat-box"><div class="number">{{ summary.total_checks }}</div><div class="label">إجمالي الفحوصات</div></div>
-    <div class="stat-box" style="border-right-color: #e53e3e;"><div class="number">{{ summary.with_issue }}</div><div class="label">فيها مشاكل</div></div>
+    <div class="stat-box">
+        <div class="number">{{ summary.total_checks }}</div>
+        <div class="label">📋 إجمالي الفحوصات</div>
+    </div>
+    <div class="stat-box" style="border-right-color: #e53e3e;">
+        <div class="number">{{ summary.with_issue }}</div>
+        <div class="label">⚠️ فحوصات فيها عطل</div>
+    </div>
+</div>
+
+{% if checks %}
+<div class="card">
+    <h2>📋 تفاصيل الفحوصات ({{ checks|length }} فحص)</h2>
+    <div style="overflow-x: auto;">
+        <table style="font-size: 12px;">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>التاريخ</th>
+                    <th>الوقت</th>
+                    <th>السيارة</th>
+                    <th>السائق</th>
+                    <th>العداد</th>
+                    <th>الفحوصات</th>
+                    <th>الحالة</th>
+                    <th>إجراءات</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dc in checks %}
+                <tr {% if dc.has_issue == 1 %}style="background:#fff5f5;"{% endif %}>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ dc.check_date }}</td>
+                    <td>{{ dc.check_time }}</td>
+                    <td><strong>{{ dc.car_name }}</strong></td>
+                    <td>{{ dc.driver_name }}</td>
+                    <td>{{ dc.km_at_check or '-' }}</td>
+                    <td>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            <span style="background:{% if dc.oil_checked %}#c6f6d5{% else %}#edf2f7{% endif %}; padding:3px 6px; border-radius:4px; font-size:11px;">🛢️</span>
+                            <span style="background:{% if dc.radiator_checked %}#c6f6d5{% else %}#edf2f7{% endif %}; padding:3px 6px; border-radius:4px; font-size:11px;">💧</span>
+                            <span style="background:{% if dc.tires_checked %}#c6f6d5{% else %}#edf2f7{% endif %}; padding:3px 6px; border-radius:4px; font-size:11px;">🛞</span>
+                            <span style="background:{% if dc.battery_checked %}#c6f6d5{% else %}#edf2f7{% endif %}; padding:3px 6px; border-radius:4px; font-size:11px;">🔋</span>
+                            <span style="background:{% if dc.belts_checked %}#c6f6d5{% else %}#edf2f7{% endif %}; padding:3px 6px; border-radius:4px; font-size:11px;">🔗</span>
+                        </div>
+                    </td>
+                    <td>
+                        {% if dc.has_issue == 1 %}
+                        <span class="badge" style="background:#fed7d7;color:#742a2a;">⚠️ يوجد عطل</span>
+                        {% else %}
+                        <span class="badge" style="background:#c6f6d5;color:#22543d;">✅ سليم</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            <a href="/daily_checks/view/{{ dc.id }}" class="btn btn-primary" style="padding:5px 10px; font-size:12px;">👁️ عرض</a>
+                            {% if is_admin %}
+                            <a href="/daily_checks/delete/{{ dc.id }}" class="btn btn-danger" style="padding:5px 10px; font-size:12px;" onclick="return confirm('⚠️ هل أنت متأكد من حذف هذا الفحص؟\n\nلا يمكن التراجع عن هذا الإجراء!')">🗑️</a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد فحوصات مطابقة للفلتر.</p>
 </div>
 {% endif %}
 
+{% elif not has_filter %}
 <div class="card">
-    <p style="text-align:center; padding:30px;">يمكنك عرض تفاصيل الفحوصات من صفحة "الفحوصات اليومية" في القائمة الرئيسية.</p>
+    <p style="text-align: center; color: #718096; padding: 30px;">👆 اختر السيارة أو الفترة الزمنية واضغط "عرض" لعرض التقرير.</p>
 </div>
+{% else %}
+<div class="card">
+    <p style="text-align: center; color: #718096; padding: 30px;">لا توجد نتائج مطابقة للفلتر.</p>
+</div>
+{% endif %}
+
 {% endblock %}
