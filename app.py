@@ -1103,6 +1103,7 @@ def reports_requesting_parties():
     conn.close()
     return render_template('reports_requesting_parties.html', parties=parties_list, parties_report=parties_report, selected_party=party_id, date_from=date_from, date_to=date_to, has_filter=bool(party_id or date_from or date_to))
 
+
 # ============== تصدير الإكسل الاحترافي ==============
 @app.route('/reports/export')
 @login_required
@@ -1131,17 +1132,16 @@ def export_excel():
     conn.close()
 
     total_trips = len(trips)
-    total_km = sum(t['distance'] or 0 for t in trips)
-    total_liters = sum(f['liters'] or 0 for f in fuels)
+    total_km = sum((t['distance'] or 0) for t in trips)
+    total_liters = sum((f['liters'] or 0) for f in fuels)
     total_fuel_cost = sum(get_effective_cost(f) for f in fuels)
-    total_maint_syp = sum(m['cost'] or 0 for m in maints if (m.get('currency') or 'ل.س') == 'ل.س')
-    total_maint_usd = sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار')
+    total_maint_syp = sum((m['cost'] or 0) for m in maints if (m.get('currency') or 'ل.س') == 'ل.س')
+    total_maint_usd = sum((m['cost'] or 0) for m in maints if m.get('currency') == 'دولار')
     total_checks = len(checks)
     total_issues = len([c for c in checks if c['has_issue'] == 1])
     
     wb = Workbook()
     
-    # التنسيقات (تم فصل الأسماء لضمان عدم التعارض)
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True, size=12)
     title_font = Font(size=16, bold=True, color="1E3A5F")
@@ -1167,7 +1167,9 @@ def export_excel():
             cell.border = thin_border
 
         for row_data in data_rows:
-            ws.append(row_data)
+            # حماية: تحويل أي None إلى سلسلة فارغة لتجنب انهيار openpyxl
+            safe_row = [str(val) if val is not None else '' for val in row_data]
+            ws.append(safe_row)
             for cell in ws[ws.max_row]:
                 cell.border = thin_border
                 cell.alignment = center_alignment
@@ -1259,6 +1261,7 @@ def export_excel():
     wb.save(output)
     output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_full_report_{month_str}.xlsx')
+
 
 # ============== تصدير باقي التقارير (تفصيلي) ==============
 @app.route('/reports/trips/export')
