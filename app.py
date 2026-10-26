@@ -1126,7 +1126,7 @@ def export_excel():
     travels = cursor.fetchall()
     execute_query(cursor, "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE o.date LIKE ?", (month_str + '%',))
     overtimes = cursor.fetchall()
-    execute_query(cursor, "SELECT t.requesting_party_id, rp.name as party_name, COUNT(*) as trips_count, SUM(t.distance) as total_km FROM trips t LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE t.trip_date LIKE ? GROUP BY t.requesting_party_id", (month_str + '%',))
+    execute_query(cursor, "SELECT t.requesting_party_id, rp.name as party_name, COUNT(*) as trips_count, SUM(t.distance) as total_km FROM trips t LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE t.trip_date LIKE ? GROUP BY t.requesting_party_id, rp.name", (month_str + '%',))
     parties = cursor.fetchall()
     
     conn.close()
