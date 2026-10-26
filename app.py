@@ -970,16 +970,12 @@ def reports():
     requesting_party_id = request.args.get('requesting_party_id') or ''
     report_type = request.args.get('report_type') or 'all'
     payment_filter = request.args.get('payment_filter') or ''
-    
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT * FROM cars WHERE active=1 ORDER BY name"); cars_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM drivers WHERE active=1 ORDER BY name"); drivers_list = cursor.fetchall()
     execute_query(cursor, "SELECT * FROM requesting_parties WHERE active=1 ORDER BY name"); parties_list = cursor.fetchall()
     years = list(range(2024, datetime.now().year + 2)); report_data = None
-    
     month_str = f"{year:04d}-{month:02d}"
-    
-    # نجلب البيانات دائماً لملء التقرير، بغض النظر عن وجود طلب سابق
     execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name, rp.name as party_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id LEFT JOIN requesting_parties rp ON t.requesting_party_id = rp.id WHERE t.trip_date LIKE ?", (month_str + '%',)); trips = cursor.fetchall()
     execute_query(cursor, "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
     execute_query(cursor, "SELECT m.*, c.name as car_name FROM maintenance m JOIN cars c ON m.car_id = c.id WHERE m.date LIKE ?", (month_str + '%',)); maints = cursor.fetchall()
@@ -987,33 +983,22 @@ def reports():
     execute_query(cursor, "SELECT tm.*, d.name as driver_name FROM travel_missions tm JOIN drivers d ON tm.driver_id = d.id WHERE tm.date LIKE ?", (month_str + '%',)); travels = cursor.fetchall()
     execute_query(cursor, "SELECT o.*, d.name as driver_name FROM overtime o JOIN drivers d ON o.driver_id = d.id WHERE o.date LIKE ?", (month_str + '%',)); overtimes = cursor.fetchall()
     
-    total_trips = len(trips)
-    total_km = sum((t['distance'] or 0) for t in trips)
-    total_liters = sum((f['liters'] or 0) for f in fuels)
-    total_fuel_cost = sum(get_effective_cost(f) for f in fuels)
-    total_maint_syp = sum((m['cost'] or 0) for m in maints if (m.get('currency') or 'ل.س') == 'ل.س')
-    total_maint_usd = sum((m['cost'] or 0) for m in maints if m.get('currency') == 'دولار')
-    total_checks = len(checks)
-    total_issues = len([c for c in checks if c['has_issue'] == 1])
-    
     report_data = {
         'summary': {
-            'total_trips': total_trips, 'total_km': total_km,
-            'total_liters': total_liters, 'total_fuel_cost': total_fuel_cost,
-            'total_maint_cost_syp': total_maint_syp, 'total_maint_cost_usd': total_maint_usd,
-            'total_checks': total_checks, 'total_issues': total_issues
+            'total_trips': len(trips), 'total_km': sum(t['distance'] or 0 for t in trips),
+            'total_liters': sum(f['liters'] or 0 for f in fuels), 'total_fuel_cost': sum(get_effective_cost(f) for f in fuels),
+            'total_maint_cost_syp': sum(m['cost'] or 0 for m in maints if (m.get('currency') or 'ل.س') == 'ل.س'),
+            'total_maint_cost_usd': sum(m['cost'] or 0 for m in maints if m.get('currency') == 'دولار'),
+            'total_checks': len(checks), 'total_issues': len([c for c in checks if c['has_issue'] == 1])
         },
-        'trips': trips, 'fuels': fuels, 'maints': maints, 'checks': checks,
-        'travels': travels, 'overtimes': overtimes
+        'trips': trips, 'fuels': fuels, 'maints': maints, 'checks': checks, 'travels': travels, 'overtimes': overtimes
     }
     conn.close()
     return render_template('reports.html', cars=cars_list, drivers=drivers_list, parties=parties_list, years=years, selected_month=month, selected_year=year, selected_car=car_id, selected_driver=driver_id, selected_party=requesting_party_id, report_data=report_data, report_type=report_type, payment_filter=payment_filter)
 
-# (باقي مسارات التقارير التفصيلية الأخرى ستبقى كما هي لجلب البيانات للعرض فقط، ولا تؤثر على التصدير)
 @app.route('/reports/trips')
 @login_required
 def reports_trips():
-    # ... (نفس كود العرض السابق)
     car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''
     date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
     conn = get_connection(); cursor = conn.cursor()
@@ -1028,9 +1013,10 @@ def reports_trips():
     if date_to: query += " AND t.trip_date <= ?"; params.append(date_to)
     query += " ORDER BY t.trip_date DESC, t.id DESC"
     execute_query(cursor, query, params); trips = cursor.fetchall()
-    summary = {'total_trips': len(trips), 'total_km': sum(t['distance'] or 0 for t in trips)}
+    total_trips = len(trips); total_km = sum(t['distance'] or 0 for t in trips)
     conn.close()
-    return render_template('reports_trips.html', cars=cars_list, drivers=drivers_list, parties=parties_list, trips=trips, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=bool(car_id or driver_id or date_from or date_to))
+    summary = {'total_trips': total_trips, 'total_km': total_km}
+    return render_template('reports_trips.html', cars=cars_list, drivers=drivers_list, parties=parties_list, trips=trips, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=True)
 
 @app.route('/reports/fuel')
 @login_required
@@ -1051,11 +1037,11 @@ def reports_fuel():
         else: query += " AND f.payment_status = ?"; params.append(payment_filter)
     query += " ORDER BY f.fuel_date DESC, f.km_at_fill DESC, f.id DESC"
     execute_query(cursor, query, params); fuel_records = cursor.fetchall()
-    total_liters = sum(f['liters'] or 0 for f in fuel_records)
-    total_cost = sum(get_effective_cost(f) for f in fuel_records)
-    summary = {'total_records': len(fuel_records), 'total_liters': total_liters, 'total_cost': total_cost, 'avg_price': total_cost / total_liters if total_liters > 0 else 0}
+    total_records = len(fuel_records); total_liters = sum(f['liters'] or 0 for f in fuel_records)
+    total_cost = sum(get_effective_cost(f) for f in fuel_records); avg_price = total_cost / total_liters if total_liters > 0 else 0
     conn.close()
-    return render_template('reports_fuel.html', cars=cars_list, drivers=drivers_list, fuel_records=fuel_records, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, payment_filter=payment_filter, has_filter=bool(car_id or driver_id or date_from or date_to or payment_filter))
+    summary = {'total_records': total_records, 'total_liters': total_liters, 'total_cost': total_cost, 'avg_price': avg_price}
+    return render_template('reports_fuel.html', cars=cars_list, drivers=drivers_list, fuel_records=fuel_records, summary=summary, selected_car=car_id, selected_driver=driver_id, date_from=date_from, date_to=date_to, payment_filter=payment_filter, has_filter=True)
 
 @app.route('/reports/maintenance')
 @login_required
@@ -1072,11 +1058,12 @@ def reports_maintenance():
     if category: query += " AND m.category = ?"; params.append(category)
     query += " ORDER BY m.date DESC, m.id DESC"
     execute_query(cursor, query, params); records = cursor.fetchall()
+    total_records = len(records)
     total_cost_syp = sum(m['cost'] or 0 for m in records if (m.get('currency') or 'ل.س') == 'ل.س')
     total_cost_usd = sum(m['cost'] or 0 for m in records if m.get('currency') == 'دولار')
-    summary = {'total_records': len(records), 'total_cost_syp': total_cost_syp, 'total_cost_usd': total_cost_usd}
     conn.close()
-    return render_template('reports_maintenance.html', cars=cars_list, records=records, summary=summary, selected_car=car_id, date_from=date_from, date_to=date_to, selected_type=mtype, selected_category=category, has_filter=bool(car_id or date_from or date_to or mtype or category))
+    summary = {'total_records': total_records, 'total_cost_syp': total_cost_syp, 'total_cost_usd': total_cost_usd}
+    return render_template('reports_maintenance.html', cars=cars_list, records=records, summary=summary, selected_car=car_id, date_from=date_from, date_to=date_to, selected_type=mtype, selected_category=category, has_filter=True)
 
 @app.route('/reports/drivers')
 @login_required
@@ -1098,6 +1085,7 @@ def reports_drivers():
     if date_to: query_overtime += " AND o.date <= ?"; overtime_params.append(date_to)
     query_overtime += " ORDER BY o.date DESC, o.id DESC"
     execute_query(cursor, query_overtime, overtime_params); all_overtime = cursor.fetchall()
+    conn.close()
     drivers_report = []
     for d in drivers_list:
         if driver_id and str(d['id']) != str(driver_id): continue
@@ -1105,8 +1093,7 @@ def reports_drivers():
         d_overtime = [o for o in all_overtime if o['driver_id'] == d['id']]
         if not d_travel and not d_overtime: continue
         drivers_report.append({'driver_name': d['name'], 'travel_missions': d_travel, 'overtimes': d_overtime, 'travel_count': len([tm for tm in d_travel if tm['is_travel'] == 1]), 'travel_km': sum(tm['distance_km'] or 0 for tm in d_travel if tm['is_travel'] == 1), 'morning_hours': sum(o['morning_hours'] or 0 for o in d_overtime), 'evening_hours': sum(o['evening_hours'] or 0 for o in d_overtime)})
-    conn.close()
-    return render_template('reports_drivers.html', drivers=drivers_list, drivers_report=drivers_report, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=bool(driver_id or date_from or date_to))
+    return render_template('reports_drivers.html', drivers=drivers_list, drivers_report=drivers_report, selected_driver=driver_id, date_from=date_from, date_to=date_to, has_filter=True)
 
 @app.route('/reports/requesting_parties')
 @login_required
@@ -1128,7 +1115,7 @@ def reports_requesting_parties():
         if not p_trips: continue
         parties_report.append({'party_name': p['name'], 'trips': p_trips, 'trips_count': len(p_trips), 'total_km': sum(t['distance'] or 0 for t in p_trips)})
     conn.close()
-    return render_template('reports_requesting_parties.html', parties=parties_list, parties_report=parties_report, selected_party=party_id, date_from=date_from, date_to=date_to, has_filter=bool(party_id or date_from or date_to))
+    return render_template('reports_requesting_parties.html', parties=parties_list, parties_report=parties_report, selected_party=party_id, date_from=date_from, date_to=date_to, has_filter=True)
 
 # ============== تصدير الإكسل الاحترافي (الشهري) ==============
 @app.route('/reports/export')
@@ -1137,7 +1124,6 @@ def export_excel():
     month = int(request.args.get('month', datetime.now().month))
     year = int(request.args.get('year', datetime.now().year))
     month_str = f"{year:04d}-{month:02d}"
-    
     conn = get_connection(); cursor = conn.cursor()
     execute_query(cursor, "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE t.trip_date LIKE ?", (month_str + '%',)); trips = cursor.fetchall()
     execute_query(cursor, "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE f.fuel_date LIKE ?", (month_str + '%',)); fuels = cursor.fetchall()
@@ -1155,8 +1141,6 @@ def export_excel():
     total_maint_usd = sum((m['cost'] or 0) for m in maints if m.get('currency') == 'دولار')
     
     wb = Workbook()
-    
-    # التنسيقات
     header_fill = PatternFill(start_color="1E3A5F", end_color="1E3A5F", fill_type="solid")
     header_font = Font(color="FFFFFF", bold=True, size=12)
     title_font = Font(size=16, bold=True, color="1E3A5F")
@@ -1171,25 +1155,19 @@ def export_excel():
         ws.cell(row=1, column=1).font = title_font
         ws.cell(row=1, column=1).alignment = center_alignment
         ws.row_dimensions[1].height = 30
-
         ws.append(headers)
         for cell in ws[2]:
             cell.fill = header_fill; cell.font = header_font; cell.alignment = center_alignment; cell.border = thin_border
-
         for row_data in data_rows:
             safe_row = [str(val) if val is not None else '' for val in row_data]
             ws.append(safe_row)
             for cell in ws[ws.max_row]: cell.border = thin_border; cell.alignment = center_alignment
-
         if totals_row:
             ws.append(totals_row)
             for cell in ws[ws.max_row]: cell.fill = total_fill; cell.font = total_font; cell.border = thin_border; cell.alignment = center_alignment
-
         for col in ws.columns:
-            max_length = max(len(str(cell.value or '')) for cell in col)
-            ws.column_dimensions[col[0].column_letter].width = max_length + 5
+            ws.column_dimensions[col[0].column_letter].width = max(len(str(cell.value or '')) for cell in col) + 5
 
-    # 1. الملخص العام
     ws_sum = wb.active; ws_sum.title = "الملخص العام"; ws_sum.sheet_view.rightToLeft = True
     ws_sum.append([f"التقرير الشهري الشامل — {month_str}"]); ws_sum['A1'].font = title_font; ws_sum['A1'].alignment = center_alignment
     ws_sum.append([])
@@ -1204,34 +1182,15 @@ def export_excel():
         for cell in ws_sum[ws_sum.max_row]: cell.border = thin_border; cell.alignment = center_alignment
     ws_sum.column_dimensions['A'].width = 30; ws_sum.column_dimensions['B'].width = 20
 
-    # 2. الرحلات
-    apply_style(wb.create_sheet("الرحلات"), "تفاصيل الرحلات", ['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)'],
-                [[t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '-', t['distance'] or 0] for t in trips],
-                ['الإجمالي', '', '', '', round(total_km, 1)])
-
-    # 3. الوقود
-    apply_style(wb.create_sheet("الوقود"), "تفاصيل الوقود", ['التاريخ', 'السيارة', 'السائق', 'اللترات', 'الكلفة (ل.س)'],
-                [[f['fuel_date'], f['car_name'], f['driver_name'] or '-', f['liters'] or 0, get_effective_cost(f)] for f in fuels],
-                ['الإجمالي', '', '', round(total_liters, 1), round(total_fuel_cost, 0)])
-
-    # 4. الصيانة
-    apply_style(wb.create_sheet("الصيانة"), "تفاصيل الصيانة", ['التاريخ', 'السيارة', 'النوع', 'التكلفة', 'العملة'],
-                [[m['date'], m['car_name'], m['type'], m['cost'] or 0, m.get('currency') or 'ل.س'] for m in maints])
-
-    # 5. الفحوصات
-    apply_style(wb.create_sheet("الفحوصات اليومية"), "تفاصيل الفحوصات اليومية", ['التاريخ', 'السيارة', 'السائق', 'العداد', 'الحالة'],
-                [[c['check_date'], c['car_name'], c['driver_name'], c['km_at_check'] or '-', 'يوجد عطل' if c['has_issue'] == 1 else 'سليم'] for c in checks],
-                ['الإجمالي', '', '', '', len(checks)])
-
-    # 6. السائقين
+    apply_style(wb.create_sheet("الرحلات"), "تفاصيل الرحلات", ['التاريخ', 'السيارة', 'السائق', 'الوجهة', 'المسافة (كم)'], [[t['trip_date'], t['car_name'], t['driver_name'], t['destination'] or '-', t['distance'] or 0] for t in trips], ['الإجمالي', '', '', '', round(total_km, 1)])
+    apply_style(wb.create_sheet("الوقود"), "تفاصيل الوقود", ['التاريخ', 'السيارة', 'السائق', 'اللترات', 'الكلفة (ل.س)'], [[f['fuel_date'], f['car_name'], f['driver_name'] or '-', f['liters'] or 0, get_effective_cost(f)] for f in fuels], ['الإجمالي', '', '', round(total_liters, 1), round(total_fuel_cost, 0)])
+    apply_style(wb.create_sheet("الصيانة"), "تفاصيل الصيانة", ['التاريخ', 'السيارة', 'النوع', 'التكلفة', 'العملة'], [[m['date'], m['car_name'], m['type'], m['cost'] or 0, m.get('currency') or 'ل.س'] for m in maints])
+    apply_style(wb.create_sheet("الفحوصات اليومية"), "تفاصيل الفحوصات اليومية", ['التاريخ', 'السيارة', 'السائق', 'العداد', 'الحالة'], [[c['check_date'], c['car_name'], c['driver_name'], c['km_at_check'] or '-', 'يوجد عطل' if c['has_issue'] == 1 else 'سليم'] for c in checks], ['الإجمالي', '', '', '', len(checks)])
     data_drivers = []
     for tm in travels: data_drivers.append(['مهمة سفر', tm['date'], tm['driver_name'], tm['description'] or '-', f"{tm['distance_km'] or 0} كم"])
     for o in overtimes: data_drivers.append(['إضافي', o['date'], o['driver_name'], f"صباحي: {o['morning_hours'] or 0} / مسائي: {o['evening_hours'] or 0}", f"{(o['morning_hours'] or 0) + (o['evening_hours'] or 0)} ساعة"])
     apply_style(wb.create_sheet("السائقين"), "سجل السائقين (مهمات وإضافي)", ['النوع', 'التاريخ', 'السائق', 'الوصف/التفاصيل', 'القيمة'], data_drivers)
-
-    # 7. الجهات الطالبة
-    apply_style(wb.create_sheet("الجهات الطالبة"), "ملخص الجهات الطالبة", ['الجهة الطالبة', 'عدد الرحلات', 'إجمالي المسافة (كم)'],
-                [[p['party_name'] or 'غير محدد', p['trips_count'], round(p['total_km'] or 0, 1)] for p in parties])
+    apply_style(wb.create_sheet("الجهات الطالبة"), "ملخص الجهات الطالبة", ['الجهة الطالبة', 'عدد الرحلات', 'إجمالي المسافة (كم)'], [[p['party_name'] or 'غير محدد', p['trips_count'], round(p['total_km'] or 0, 1)] for p in parties])
 
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_full_report_{month_str}.xlsx')
@@ -1240,7 +1199,6 @@ def export_excel():
 @app.route('/reports/trips/export')
 @login_required
 def export_trips_excel():
-    # (نفس تصميم التقرير الشهري - ورقة واحدة)
     car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''; date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''
     conn = get_connection(); cursor = conn.cursor()
     query = "SELECT t.*, c.name as car_name, d.name as driver_name FROM trips t JOIN cars c ON t.car_id = c.id JOIN drivers d ON t.driver_id = d.id WHERE 1=1"
@@ -1273,7 +1231,6 @@ def export_trips_excel():
 @app.route('/reports/fuel/export')
 @login_required
 def export_fuel_excel():
-    # (نفس تصميم التقرير الشهري - ورقة واحدة)
     car_id = request.args.get('car_id') or ''; driver_id = request.args.get('driver_id') or ''; date_from = request.args.get('date_from') or ''; date_to = request.args.get('date_to') or ''; payment_filter = request.args.get('payment_filter') or ''
     conn = get_connection(); cursor = conn.cursor()
     query = "SELECT f.*, c.name as car_name, d.name as driver_name FROM fuel f JOIN cars c ON f.car_id = c.id LEFT JOIN drivers d ON f.driver_id = d.id WHERE 1=1"
@@ -1444,38 +1401,22 @@ telegram_pending_photos = {}
 telegram_timers = {}
 
 def finalize_fuel_request(chat_id):
-    """دالة تُنفذ بعد انتهاء المهلة لحفظ الطلب في قاعدة البيانات"""
     if chat_id not in telegram_pending_photos:
         return
-    
     session = telegram_pending_photos[chat_id]
-    
     if not session.get('station_image'):
         return
-        
     extracted = extract_data_from_images(car_img_b64=session['car_b64'], station_img_b64=session['station_b64'])
-    
     conn = get_connection(); cursor = conn.cursor()
     now = datetime.now() + timedelta(hours=3)
-    
-    # ندمج النص الذي كتبه السائق مع ملاحظات البوت
     final_notes = "صورتين مرسلتين من تلغرام."
     if session.get('text'):
         final_notes += f" | ملاحظات السائق: {session['text']}"
-    
-    execute_query(cursor, """
-        INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) 
-        VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
-    """, (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), final_notes, session['car_image'], session['station_image']))
+    execute_query(cursor, """INSERT INTO pending_fuel (driver_id, car_id, fuel_date, fuel_time, liters, km_at_fill, status, created_at, notes, car_image, station_image) VALUES (NULL, NULL, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)""", (now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'), extracted.get('liters'), extracted.get('km'), now.strftime('%Y-%m-%d %H:%M:%S'), final_notes, session['car_image'], session['station_image']))
     conn.commit(); conn.close()
-    
-    if chat_id in telegram_pending_photos:
-        del telegram_pending_photos[chat_id]
-    if chat_id in telegram_timers:
-        del telegram_timers[chat_id]
-        
+    if chat_id in telegram_pending_photos: del telegram_pending_photos[chat_id]
+    if chat_id in telegram_timers: del telegram_timers[chat_id]
     send_telegram_message(chat_id, f"✅ تم استلام الطلب بنجاح! العداد المقروء: {extracted.get('km') or 'غير واضح'}. اللترات: {extracted.get('liters') or 'غير واضحة'}. بانتظار مراجعة الإدارة.")
-
 
 @app.route('/telegram_webhook', methods=['POST'])
 def telegram_webhook():
@@ -1484,8 +1425,6 @@ def telegram_webhook():
         chat_id = data['message']['chat']['id']
         text = data['message'].get('text', '').strip()
         photos = data['message'].get('photo', [])
-        
-        # 1. إذا أرسل السائق صورة
         if photos:
             file_id = photos[-1]['file_id']
             file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile?file_id={file_id}"
@@ -1494,55 +1433,33 @@ def telegram_webhook():
                 file_path = file_info['result']['file_path']
                 img_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
                 img_data = requests.get(img_url).content
-                
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 filename = f"tg_fuel_{chat_id}_{timestamp}.jpg"
-                
                 uploaded_filename = upload_image_to_supabase(filename, img_data)
                 if not uploaded_filename:
                     filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                     with open(filepath, 'wb') as f: f.write(img_data)
                     uploaded_filename = filename
-
                 img_b64 = base64.b64encode(img_data).decode('utf-8')
-                
                 if chat_id not in telegram_pending_photos:
-                    # استلام الصورة الأولى (عداد السيارة)
-                    telegram_pending_photos[chat_id] = {
-                        'car_image': uploaded_filename, 
-                        'car_b64': img_b64, 
-                        'station_image': None, 
-                        'station_b64': None, 
-                        'text': text
-                    }
+                    telegram_pending_photos[chat_id] = {'car_image': uploaded_filename, 'car_b64': img_b64, 'station_image': None, 'station_b64': None, 'text': text}
                     send_telegram_message(chat_id, "✅ تم استلام صورة عداد السيارة. يرجى إرسال صورة عداد الكازية الآن، ثم اكتب أي ملاحظات تريدها.")
                 else:
-                    # استلام الصورة الثانية (عداد الكازية)
                     telegram_pending_photos[chat_id]['station_image'] = uploaded_filename
                     telegram_pending_photos[chat_id]['station_b64'] = img_b64
-                    if text:
-                        telegram_pending_photos[chat_id]['text'] = text
-                    
+                    if text: telegram_pending_photos[chat_id]['text'] = text
                     send_telegram_message(chat_id, "✅ تم استلام الصورة الثانية. إذا كان لديك أي ملاحظات، اكتبها الآن. سيتم حفظ الطلب تلقائياً بعد 20 ثانية.")
-                    
-                    if chat_id in telegram_timers:
-                        telegram_timers[chat_id].cancel()
-                    
+                    if chat_id in telegram_timers: telegram_timers[chat_id].cancel()
                     timer = threading.Timer(20.0, finalize_fuel_request, args=[chat_id])
                     telegram_timers[chat_id] = timer
                     timer.start()
-
             except Exception as e:
                 send_telegram_message(chat_id, f"❌ خطأ في معالجة الصورة: {str(e)}")
-                
-        # 2. إذا أرسل السائق نصاً فقط (بدون صورة)
         elif text:
             if chat_id in telegram_pending_photos:
                 telegram_pending_photos[chat_id]['text'] = text
-                
                 if telegram_pending_photos[chat_id].get('station_image'):
-                    if chat_id in telegram_timers:
-                        telegram_timers[chat_id].cancel()
+                    if chat_id in telegram_timers: telegram_timers[chat_id].cancel()
                     timer = threading.Timer(20.0, finalize_fuel_request, args=[chat_id])
                     telegram_timers[chat_id] = timer
                     timer.start()
@@ -1551,7 +1468,6 @@ def telegram_webhook():
                     send_telegram_message(chat_id, "✅ تم استلام ملاحظاتك. يرجى إرسال صورة عداد الكازية الآن.")
             else:
                 send_telegram_message(chat_id, "ℹ️ يرجى إرسال صورة عداد السيارة أولاً، ثم صورة عداد الكازية.")
-            
     return jsonify({'status': 'ok'})
 
 @app.route('/admin/pending_fuel')
