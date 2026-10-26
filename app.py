@@ -1195,7 +1195,7 @@ def export_excel():
     output = io.BytesIO(); wb.save(output); output.seek(0)
     return send_file(output, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', as_attachment=True, download_name=f'qamh_full_report_{month_str}.xlsx')
 
-# ============== تصدير التقارير التفصيلية (تصميم احترافي) ==============
+# ============== تصدير التقارير التفصيلية (تصميم احترافي مع احترام الفلاتر) ==============
 @app.route('/reports/trips/export')
 @login_required
 def export_trips_excel():
@@ -1239,6 +1239,10 @@ def export_fuel_excel():
     if driver_id: query += " AND f.driver_id = ?"; params.append(driver_id)
     if date_from: query += " AND f.fuel_date >= ?"; params.append(date_from)
     if date_to: query += " AND f.fuel_date <= ?"; params.append(date_to)
+    if payment_filter:
+        if payment_filter == 'خزان الشركة': query += " AND f.source = ?"; params.append('خزان الشركة')
+        elif payment_filter == 'كازية': query += " AND f.source = ?"; params.append('كازية')
+        else: query += " AND f.payment_status = ?"; params.append(payment_filter)
     query += " ORDER BY f.fuel_date DESC, f.id DESC"
     execute_query(cursor, query, params); records = cursor.fetchall(); conn.close()
     
